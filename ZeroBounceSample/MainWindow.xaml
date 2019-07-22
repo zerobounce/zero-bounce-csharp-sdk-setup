@@ -1,0 +1,42 @@
+﻿<Window x:Class="ZeroBounceSample.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:ZeroBounceSample"
+        mc:Ignorable="d"
+        Title="MainWindow" Height="350" Width="525">
+    <Grid >
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition></ColumnDefinition>
+            <ColumnDefinition></ColumnDefinition>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+            <RowDefinition></RowDefinition>
+        </Grid.RowDefinitions>
+        <Button Grid.Row="0" Grid.Column="0" Width="100" Height="50" Margin="5" Name="ValidateButton" Click="ValidateButton_OnClick">
+            Validate
+        </Button>
+        <Button Grid.Row="1" Grid.Column="0" Width="100" Height="50" Margin="5" Name="CreditsButton" Click="CreditsButton_OnClick">
+            Get Credits
+        </Button>
+        <Button Grid.Row="2" Grid.Column="0" Width="100" Height="50" Margin="5" Name="ApiUsageButton" Click="ApiUsageButton_OnClick">
+            Get Api Usage
+        </Button>
+        <Button Grid.Row="0" Grid.Column="1" Width="100" Height="50" Margin="5" Name="SendFileButton" Click="SendFileButton_OnClick">
+            Send File
+        </Button>
+        <Button Grid.Row="1" Grid.Column="1" Width="100" Height="50" Margin="5" Name="FileStatusButton" Click="FileStatusButton_OnClick">
+            File Status
+        </Button>
+        <Button Grid.Row="2" Grid.Column="1" Width="100" Height="50" Margin="5" Name="GetFileButton" Click="GetFileButton_OnClick">
+            Get File
+        </Button>
+        <Button Grid.Row="3" Grid.Column="1" Width="100" Height="50" Margin="5" Name="DeleteFileButton" Click="DeleteFileButton_OnClick">
+            Delete File
+        </Button>
+    </Grid>
+</Window>

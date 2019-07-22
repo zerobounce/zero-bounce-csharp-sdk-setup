@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZeroBounceSDK", "ZeroBounceSDK\ZeroBounceSDK.csproj", "{B8B7D85A-4562-4536-9713-AE76B8A7C720}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZeroBounceSample", "ZeroBounceSample\ZeroBounceSample.csproj", "{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{B8B7D85A-4562-4536-9713-AE76B8A7C720}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B8B7D85A-4562-4536-9713-AE76B8A7C720}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B8B7D85A-4562-4536-9713-AE76B8A7C720}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B8B7D85A-4562-4536-9713-AE76B8A7C720}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
