@@ -48,6 +48,10 @@
     <Reference Include="WindowsBase" />
     <Reference Include="PresentationCore" />
     <Reference Include="PresentationFramework" />
+    <Reference Include="ZeroBounceSDK, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null">
+      <HintPath>..\packages\ZeroBounceSDK.0.0.1\lib\netstandard2.0\ZeroBounceSDK.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">
@@ -84,12 +88,6 @@
   <ItemGroup>
     <None Include="App.config" />
     <None Include="packages.config" />
-  </ItemGroup>
-  <ItemGroup>
-    <ProjectReference Include="..\ZeroBounceSDK\ZeroBounceSDK.csproj">
-      <Project>{b8b7d85a-4562-4536-9713-ae76b8a7c720}</Project>
-      <Name>ZeroBounceSDK</Name>
-    </ProjectReference>
   </ItemGroup>
   <ItemGroup>
     <Content Include="email_file.csv">

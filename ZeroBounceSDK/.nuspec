@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+    <metadata>
+        <!-- Required elements-->
+        <id>ZeroBounceSDK</id>
+        <version>0.0.1</version>
+        <description>The ZeroBounce SDK for C# programming language</description>
+        <authors>zbintegrations@outlook.com0</authors>
+        <license type="expression">MIT</license>
+
+        <!-- Optional elements -->
+        <!-- ... -->
+    </metadata>
+    <!-- Optional 'files' node -->
+</package>
