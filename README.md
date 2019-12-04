@@ -152,3 +152,81 @@ ZeroBounce.Instance.DeleteFile(fileId,
         // ... your implementation
     });
 ```
+
+### AI Scoring API
+
+* ##### The scoringSendfile API allows user to send a file for bulk email validation
+```c#
+var filePath = File("<FILE_PATH>"); // The csv or txt file
+var emailAddressColumn = 3;         // The index of "email" column in the file. Index starts at 1
+var returnUrl = "https://domain.com/called/after/processing/request";
+var hasHeaderRow = true;            // If this is `true` the first row is considered as table headers
+
+ZeroBounce.Instance.ScoringSendFile(
+    filePath,
+    emailAddressColumn,
+    returnUrl,
+    hasHeaderRow,
+    response =>
+    {
+        Debug.WriteLine("SendFile success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("SendFile failure error " + error);
+        // ... your implementation
+    });
+```
+
+* ##### The scoringGetFile API allows users to get the validation results file for the file been submitted using scoringSendfile API
+```c#
+var fileId = "<FILE_ID>";                       // The returned file ID when calling scoringSendfile API
+var localDownloadPath = "<FILE_DOWNLOAD_PATH>"; // The location where the downloaded file will be saved
+
+ZeroBounce.Instance.ScoringGetFile(fileId, localDownloadPath,
+    response =>
+    {
+        Debug.WriteLine("GetFile success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("GetFile failure error " + error);
+        // ... your implementation
+    });
+```
+
+* ##### Check the status of a file uploaded via "scoringSendFile" method
+```c#
+var fileId = "<FILE_ID>";                       // The returned file ID when calling scoringSendfile API
+
+ZeroBounce.Instance.ScoringFileStatus(fileId,
+    response =>
+    {
+        Debug.WriteLine("FileStatus success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("FileStatus failure error " + error);
+        // ... your implementation
+    });
+```
+
+* ##### Deletes the file that was submitted using scoring scoringSendfile API. File can be deleted only when its status is _`Complete`_
+```c#
+var fileId = "<FILE_ID>";                       // The returned file ID when calling scoringSendfile API
+
+ZeroBounce.Instance.ScoringDeleteFile(fileId,
+    response =>
+    {
+        Debug.WriteLine("DeleteFile success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("DeleteFile failure error " + error);
+        // ... your implementation
+    });
+```

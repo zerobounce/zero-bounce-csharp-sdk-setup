@@ -83,13 +83,29 @@ namespace ZeroBounceSDK
         public void FileStatus(string fileId,
             Action<ZBFileStatusResponse> successCallback, Action<string> failureCallback)
         {
+            _FileStatus(false, fileId, successCallback, failureCallback);
+        }
+        
+        /// <param name="fileId">The returned file ID when calling scoringSendFile API.</param>
+        /// <param name="successCallback"> The success callback function, called with a ZBFileStatusResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
+        public void ScoringFileStatus(string fileId,
+            Action<ZBFileStatusResponse> successCallback, Action<string> failureCallback)
+        {
+            _FileStatus(true, fileId, successCallback, failureCallback);
+        }
+        
+        private void _FileStatus(bool scoring, string fileId,
+            Action<ZBFileStatusResponse> successCallback, Action<string> failureCallback)
+        {
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                BulkApiBaseUrl + "/filestatus?api_key=" + _apiKey + "&file_id=" + fileId,
+                BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/filestatus?api_key=" + _apiKey + "&file_id=" + fileId,
                 successCallback, failureCallback);
         }
 
+        
         public class SendFileOptions
         {
             public string ReturnUrl;
@@ -99,11 +115,34 @@ namespace ZeroBounceSDK
             public int IpAddressColumn;
             public bool HasHeaderRow;
         }
+        
+        /// <summary>
+        /// The scoringSendfile API allows user to send a file for bulk email validation
+        /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
+        /// </summary>
+        public void ScoringSendFile(string filePath, int emailAddressColumn, string returnUrl, bool hasHeaderRow,
+            Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _SendFile(true, filePath, emailAddressColumn, new SendFileOptions
+            {
+                ReturnUrl = returnUrl,
+                HasHeaderRow = hasHeaderRow,
+            }, successCallback, failureCallback);
+        }
 
         /// <summary>
         /// The sendfile API allows user to send a file for bulk email validation
+        /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         /// </summary>
-        public async void SendFile(string filePath, int emailAddressColumn, SendFileOptions options,
+        public void SendFile(string filePath, int emailAddressColumn, SendFileOptions options,
+            Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _SendFile(false, filePath, emailAddressColumn, options, successCallback, failureCallback);
+        }
+        
+        private async void _SendFile(bool scoring, string filePath, int emailAddressColumn, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
@@ -133,7 +172,7 @@ namespace ZeroBounceSDK
                         content.Add(new StringContent(options.IpAddressColumn.ToString()), "ip_address_column");
                 }
 
-                const string url = BulkApiBaseUrl + "/sendFile";
+                var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendFile";
                 var result = await _client.PostAsync(url, content);
                 var responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
@@ -146,16 +185,35 @@ namespace ZeroBounceSDK
         }
 
         /// <summary>
-        /// The getfile API allows users to get the validation results file for the file been submitted using sendfile API
+        /// The scoringGetFile API allows users to get the validation results file for the file been submitted using scoringSendfile API
+        /// <param name="successCallback"> The success callback function, called with a ZBGetFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         /// </summary>
-        public async void GetFile(string fileId, string localDownloadPath, 
+        public void ScoringGetFile(string fileId, string localDownloadPath, 
+            Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _GetFile(true, fileId, localDownloadPath, successCallback, failureCallback);
+        }
+        
+        /// <summary>
+        /// The getfile API allows users to get the validation results file for the file been submitted using sendfile API
+        /// <param name="successCallback"> The success callback function, called with a ZBGetFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
+        /// </summary>
+        public void GetFile(string fileId, string localDownloadPath, 
+            Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _GetFile(false, fileId, localDownloadPath, successCallback, failureCallback);
+        }
+        
+        private async void _GetFile(bool scoring, string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
 
             try
             {
-                var url = BulkApiBaseUrl + "/getFile?api_key=" + _apiKey + "&file_id=" + fileId;
+                var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/getFile?api_key=" + _apiKey + "&file_id=" + fileId;
                 var stream = await _client.GetStreamAsync(url);
                
                 var dirPath = Path.GetDirectoryName(localDownloadPath);
@@ -174,13 +232,28 @@ namespace ZeroBounceSDK
                 failureCallback(e.Message);
             }
         }
+        
+        
+        /// <param name="fileId">The returned file ID when calling scoringSendfile API.</param>
+        /// <param name="successCallback"> The success callback function, called with a ZBDeleteFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
+        public void ScoringDeleteFile(string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
+            _DeleteFile(true, fileId, successCallback, failureCallback);
+        }
+
 
         /// <param name="fileId">The returned file ID when calling sendfile API.</param>
+        /// <param name="successCallback"> The success callback function, called with a ZBDeleteFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         public void DeleteFile(string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
+            _DeleteFile(false, fileId, successCallback, failureCallback);
+        }
+        
+        private void _DeleteFile(bool scoring, string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                BulkApiBaseUrl + "/deletefile?api_key=" + _apiKey + "&file_id=" + fileId,
+                BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/deletefile?api_key=" + _apiKey + "&file_id=" + fileId,
                 successCallback,
                 failureCallback);
         }
