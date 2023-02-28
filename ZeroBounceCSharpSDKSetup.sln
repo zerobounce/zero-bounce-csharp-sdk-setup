@@ -1,8 +1,13 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZeroBounceSDK", "ZeroBounceSDK\ZeroBounceSDK.csproj", "{B8B7D85A-4562-4536-9713-AE76B8A7C720}"
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33110.190
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "ZeroBounceSDK", "ZeroBounceSDK\ZeroBounceSDK.csproj", "{B8B7D85A-4562-4536-9713-AE76B8A7C720}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZeroBounceSample", "ZeroBounceSample\ZeroBounceSample.csproj", "{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ZeroBounceTests", "ZeroBounceTests\ZeroBounceTests.csproj", "{20931F01-130A-4E21-BE25-FAAC02CD0D36}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -18,5 +23,15 @@ Global
 		{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A1A0837D-9E35-4C52-8EB5-2653CEC264FD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{20931F01-130A-4E21-BE25-FAAC02CD0D36}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{20931F01-130A-4E21-BE25-FAAC02CD0D36}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{20931F01-130A-4E21-BE25-FAAC02CD0D36}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{20931F01-130A-4E21-BE25-FAAC02CD0D36}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {FB37F3D5-E301-4373-ADCA-16D8998DA6C3}
 	EndGlobalSection
 EndGlobal

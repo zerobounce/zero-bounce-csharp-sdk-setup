@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Net.Http;
-using System.Net.Http.Headers;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace ZeroBounceSDK
@@ -46,7 +44,7 @@ namespace ZeroBounceSDK
             _sendRequest(
                 ApiBaseUrl + "/validate?api_key=" + _apiKey + "&email=" + email + "&ip_address=" + (ipAddress ?? ""),
                 successCallback,
-                failureCallback);
+                failureCallback).Wait(); 
         }
 
         /// <sumary>This API will tell you how many credits you have left on your account. It's simple, fast and easy to use.</sumary>
@@ -57,7 +55,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(ApiBaseUrl + "/getcredits?api_key=" + _apiKey,
-                successCallback, failureCallback);
+                successCallback, failureCallback).Wait();
         }
 
         /// <param name="startDate">The start date of when you want to view API usage</param>
@@ -74,7 +72,7 @@ namespace ZeroBounceSDK
                 + "&start_date=" + startDate.ToString("yyyy-MM-dd")  
                 + "&end_date=" + endDate.ToString("yyyy-MM-dd"),
                 successCallback,
-                failureCallback);
+                failureCallback).Wait();
         }
 
         /// <param name="fileId">The returned file ID when calling sendFile API.</param>
@@ -102,7 +100,7 @@ namespace ZeroBounceSDK
 
             _sendRequest(
                 BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/filestatus?api_key=" + _apiKey + "&file_id=" + fileId,
-                successCallback, failureCallback);
+                successCallback, failureCallback).Wait();
         }
 
         
@@ -255,7 +253,7 @@ namespace ZeroBounceSDK
             _sendRequest(
                 BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/deletefile?api_key=" + _apiKey + "&file_id=" + fileId,
                 successCallback,
-                failureCallback);
+                failureCallback).Wait();
         }
         
         private bool InvalidApiKey(Action<string> failureCallback)
@@ -266,7 +264,7 @@ namespace ZeroBounceSDK
             return true;
         }
 
-        private async void _sendRequest<T>(string url, Action<T> successCallback, Action<string> failureCallback)
+        private async Task _sendRequest<T>(string url, Action<T> successCallback, Action<string> failureCallback)
             where T : ZBResponse
         {
             try
