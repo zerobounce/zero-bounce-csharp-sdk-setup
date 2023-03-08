@@ -23,8 +23,8 @@ ZeroBounce.Instance.Initialize("<YOUR_API_KEY>");
 Then you can use any of the SDK methods, for example:
 * ##### Validate an email address
 ```c#
-var email = "<EMAIL_ADDRESS>"   // The email address you want to validate
-var ipAddress = "127.0.0.1"     // The IP Address the email signed up from (Optional)
+var email = "<EMAIL_ADDRESS>";   // The email address you want to validate
+var ipAddress = "127.0.0.1";     // The IP Address the email signed up from (Optional)
 
 ZeroBounce.Instance.Validate(email, ipAddress,
     response =>
