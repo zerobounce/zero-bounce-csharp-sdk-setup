@@ -227,6 +227,6 @@ ZeroBounce.Instance.ScoringDeleteFile(fileId,
     error =>
     {
         Debug.WriteLine("DeleteFile failure error " + error);
-        // ... your implementation
+        // ...your implementation
     });
 ```
