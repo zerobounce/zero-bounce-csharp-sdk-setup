@@ -6,25 +6,23 @@ using Newtonsoft.Json;
 
 namespace ZeroBounceSDK
 {
-    public sealed class ZeroBounce
+    public class ZeroBounce
     {
-        private static readonly ZeroBounce _instance = new ZeroBounce();
+        protected static readonly ZeroBounce _instance = new ZeroBounce();
 
         // Explicit static constructor to tell C# compiler
         // not to mark type as beforefieldinit
         static ZeroBounce()
         {
         }
-
-        private ZeroBounce()
+        protected ZeroBounce()
         {
         }
-
         public static ZeroBounce Instance => _instance;
 
         private const string ApiBaseUrl = "https://api.zerobounce.net/v2";
         private const string BulkApiBaseUrl = "https://bulkapi.zerobounce.net/v2";
-        private readonly HttpClient _client = new HttpClient();
+        protected HttpClient _client = new HttpClient();
         private string _apiKey;
 
         public void Initialize(string apiKey)
@@ -92,7 +90,7 @@ namespace ZeroBounceSDK
         {
             _FileStatus(true, fileId, successCallback, failureCallback);
         }
-        
+
         private void _FileStatus(bool scoring, string fileId,
             Action<ZBFileStatusResponse> successCallback, Action<string> failureCallback)
         {
@@ -139,7 +137,7 @@ namespace ZeroBounceSDK
         {
             _SendFile(false, filePath, emailAddressColumn, options, successCallback, failureCallback);
         }
-        
+
         private async void _SendFile(bool scoring, string filePath, int emailAddressColumn, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
@@ -203,7 +201,7 @@ namespace ZeroBounceSDK
         {
             _GetFile(false, fileId, localDownloadPath, successCallback, failureCallback);
         }
-        
+
         private async void _GetFile(bool scoring, string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
@@ -246,7 +244,7 @@ namespace ZeroBounceSDK
         public void DeleteFile(string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
             _DeleteFile(false, fileId, successCallback, failureCallback);
         }
-        
+
         private void _DeleteFile(bool scoring, string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
             if (InvalidApiKey(failureCallback)) return;
 
@@ -255,12 +253,12 @@ namespace ZeroBounceSDK
                 successCallback,
                 failureCallback).Wait();
         }
-        
+
         private bool InvalidApiKey(Action<string> failureCallback)
         {
             if (_apiKey != null) return false;
             failureCallback("ZeroBounce SDK is not initialized. " +
-                            "Please call ZeroBounceSDK.initialize(context, apiKey) first");
+                            "Please call ZeroBounce.Instance.Initialize(apiKey) first");
             return true;
         }
 

@@ -4,7 +4,7 @@ namespace ZeroBounceSDK
 {
     public class ZBCreditsResponse : ZBResponse
     {
-        [JsonProperty("Credits")] public string Credits;
+        [JsonProperty("Credits")] public int Credits;
 
         public override string ToString()
         {

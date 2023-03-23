@@ -1,5 +1,14 @@
 using System;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Converters;
+
+class CustomDateTimeConverter : IsoDateTimeConverter
+{
+    public CustomDateTimeConverter()
+    {
+        DateTimeFormat = "M/d/yyyy";
+    }
+}
 
 namespace ZeroBounceSDK
 {
@@ -109,10 +118,12 @@ namespace ZeroBounceSDK
         public int SubStatusFailedSmtpConnection;
 
         /// Start date of query
-        [JsonProperty("start_date")] public string StartDate;
+        [JsonConverter(typeof(CustomDateTimeConverter))]
+        [JsonProperty("start_date")] public DateTime StartDate;
 
         /// End date of query
-        [JsonProperty("end_date")] public string EndDate;
+        [JsonConverter(typeof(CustomDateTimeConverter))]
+        [JsonProperty("end_date")] public DateTime EndDate;
 
         public override string ToString()
         {
