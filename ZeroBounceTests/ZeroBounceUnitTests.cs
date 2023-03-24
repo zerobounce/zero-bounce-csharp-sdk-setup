@@ -153,4 +153,25 @@ public class Tests
             }
         );
     }
+
+    [Test]
+    public void GetActivity()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""found"": true,
+            ""active_in_days"": ""180""
+        }");
+
+        ZeroBounceTest.Instance.GetActivity("valid@example.com",
+            response =>
+            {
+                Assert.That(response.Found, Is.EqualTo(true));
+                Assert.That(response.ActiveInDays, Is.EqualTo(180));
+            },
+            error =>
+            {
+                Assert.Fail(error);
+            }
+        );
+    }
 }

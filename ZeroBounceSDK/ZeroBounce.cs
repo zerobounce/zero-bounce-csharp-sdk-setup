@@ -73,6 +73,19 @@ namespace ZeroBounceSDK
                 failureCallback).Wait();
         }
 
+        /// <param name="email">The email address for which we are interested in getting the engagement</param>
+        public void GetActivity(string email, Action<ZBActivityResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            _sendRequest(
+                ApiBaseUrl + "/activity?api_key=" + _apiKey
+                + "&email=" + email,
+                successCallback,
+                failureCallback).Wait();
+        }
+
         /// <param name="fileId">The returned file ID when calling sendFile API.</param>
         /// <param name="successCallback"> The success callback function, called with a ZBFileStatusResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
