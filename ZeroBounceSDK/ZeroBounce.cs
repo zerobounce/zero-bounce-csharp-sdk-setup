@@ -173,6 +173,7 @@ namespace ZeroBounceSDK
                 var responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
                 successCallback(response);
+                file.Close();
             }
             catch (Exception e)
             {
@@ -213,7 +214,7 @@ namespace ZeroBounceSDK
                 var stream = await _client.GetStreamAsync(url);
                
                 var dirPath = Path.GetDirectoryName(localDownloadPath);
-                if(dirPath != null) Directory.CreateDirectory(dirPath);
+                if(dirPath != null & dirPath != "") Directory.CreateDirectory(dirPath);
                 var fileStream = new FileStream(localDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096,
                     true);
                 await stream.CopyToAsync(fileStream);
