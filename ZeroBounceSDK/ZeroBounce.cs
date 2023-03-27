@@ -118,11 +118,13 @@ namespace ZeroBounceSDK
         public class SendFileOptions
         {
             public string ReturnUrl;
+            public int EmailAddressColumn;
             public int FirstNameColumn;
             public int LastNameColumn;
             public int GenderColumn;
             public int IpAddressColumn;
             public bool HasHeaderRow;
+            public bool RemoveDuplicate;
         }
         
         /// <summary>
@@ -130,14 +132,10 @@ namespace ZeroBounceSDK
         /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         /// </summary>
-        public void ScoringSendFile(string filePath, int emailAddressColumn, string returnUrl, bool hasHeaderRow,
+        public void ScoringSendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(true, filePath, emailAddressColumn, new SendFileOptions
-            {
-                ReturnUrl = returnUrl,
-                HasHeaderRow = hasHeaderRow,
-            }, successCallback, failureCallback);
+            _SendFile(true, filePath, options, successCallback, failureCallback);
         }
 
         /// <summary>
@@ -145,13 +143,13 @@ namespace ZeroBounceSDK
         /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         /// </summary>
-        public void SendFile(string filePath, int emailAddressColumn, SendFileOptions options,
+        public void SendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(false, filePath, emailAddressColumn, options, successCallback, failureCallback);
+            _SendFile(false, filePath, options, successCallback, failureCallback);
         }
 
-        private async void _SendFile(bool scoring, string filePath, int emailAddressColumn, SendFileOptions options,
+        private async void _SendFile(bool scoring, string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
@@ -163,14 +161,12 @@ namespace ZeroBounceSDK
                 content.Add(new StreamContent(file), "file", Path.GetFileName(filePath));
 
                 content.Add(new StringContent(_apiKey), "api_key");
-                content.Add(new StringContent(emailAddressColumn.ToString()), "email_address_column");
 
                 if (options != null)
                 {
+                    content.Add(new StringContent(options.EmailAddressColumn.ToString()), "email_address_column");
                     if (options.ReturnUrl != null)
                         content.Add(new StringContent(options.ReturnUrl), "return_url");
-                    if (options.HasHeaderRow)
-                        content.Add(new StringContent("true"), "has_header_row");
                     if (options.FirstNameColumn > 0)
                         content.Add(new StringContent(options.FirstNameColumn.ToString()), "first_name_column");
                     if (options.LastNameColumn > 0)
@@ -179,6 +175,10 @@ namespace ZeroBounceSDK
                         content.Add(new StringContent(options.GenderColumn.ToString()), "gender_column");
                     if (options.IpAddressColumn > 0)
                         content.Add(new StringContent(options.IpAddressColumn.ToString()), "ip_address_column");
+                    if (options.HasHeaderRow)
+                        content.Add(new StringContent("true"), "has_header_row");
+                    if (options.RemoveDuplicate)
+                        content.Add(new StringContent("true"), "remove_duplicate");
                 }
 
                 var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendFile";
