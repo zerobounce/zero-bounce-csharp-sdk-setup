@@ -106,7 +106,6 @@ public class Tests
         ZeroBounceTest.Instance.ScoringFileStatus("fae8b155-da88-45fb-8058-0ccfad168812",
             response =>
             {
-                //TestContext.WriteLine("success response " + response);
                 Assert.That(response.Success, Is.EqualTo(true));
                 Assert.That(response.FileName, Is.EqualTo("email_list.txt"));
             },

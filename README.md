@@ -72,6 +72,23 @@ ZeroBounce.Instance.GetApiUsage(startDate, endDate,
     });
 ```
 
+* ##### Use the Activity API endpoint to gather insights into your subscribers'overall email engagement
+```c#
+var email = "valid@example.com";    // Subscriber email address
+
+ZeroBounceTest.Instance.GetActivity(email,
+    response =>
+    {
+        Debug.WriteLine("GetActivity success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("GetActivity failure error " + error);
+        // ... your implementation
+    });
+```
+
 * ##### The sendfile API allows user to send a file for bulk email validation
 ```c#
 var filePath = File("<FILE_PATH>"); // The csv or txt file
