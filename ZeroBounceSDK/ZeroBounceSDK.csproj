@@ -4,10 +4,30 @@
         <TargetFramework>netstandard2.0</TargetFramework>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <Title>ZeroBounceSDK</Title>
-        <Authors>zbintegrations@outlook.com</Authors>
+        <Authors>zerobounce</Authors>
 		<License>MIT</License>
 		<PackageVersion>0.0.1</PackageVersion>
+		<Version>1.1.0</Version>
+		<Company>ZeroBounce</Company>
+		<Description>Official C# ZeroBounce SDK</Description>
+		<PackageProjectUrl>https://www.zerobounce.net/</PackageProjectUrl>
+		<PackageIcon>zerobounce-logo.png</PackageIcon>
+		<PackageReadmeFile>README.md</PackageReadmeFile>
+		<RepositoryUrl>https://github.com/zerobounce/zero-bounce-php-sdk-setup</RepositoryUrl>
+		<RepositoryType>git</RepositoryType>
+		<PackageTags>zerobounce</PackageTags>
     </PropertyGroup>
+
+    <ItemGroup>
+      <None Include="..\..\..\..\Downloads\download\zerobounce-logo.png">
+        <Pack>True</Pack>
+        <PackagePath>\</PackagePath>
+      </None>
+      <None Include="..\README.md">
+        <Pack>True</Pack>
+        <PackagePath>\</PackagePath>
+      </None>
+    </ItemGroup>
 
     <ItemGroup>
       <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />

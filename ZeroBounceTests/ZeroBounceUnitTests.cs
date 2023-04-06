@@ -191,7 +191,7 @@ public class Tests
         ""domain_age_days"": ""9692"",
         ""firstname"": ""zero"",
         ""lastname"": ""bounce"",
-        ""gender"": ""male"",
+        ""gender"": ""male""
     }");
 
         ZeroBounceTest.Instance.Validate("valid@example.com", "127.0.0.1",
