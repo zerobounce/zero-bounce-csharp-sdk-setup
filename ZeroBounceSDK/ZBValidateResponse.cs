@@ -26,7 +26,7 @@ namespace ZeroBounceSDK
         [JsonProperty("did_you_mean")] public string DidYouMean;
 
         //Age of the email domain in days or [null].
-        [JsonProperty("domain_age_days")] public string DomainAgeDays;
+        [JsonProperty("domain_age_days")] public int DomainAgeDays;
 
         //[true/false] If the email comes from a free provider.
         [JsonProperty("free_email")] public bool FreeEmail;

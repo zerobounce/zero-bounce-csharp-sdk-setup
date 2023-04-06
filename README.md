@@ -72,13 +72,30 @@ ZeroBounce.Instance.GetApiUsage(startDate, endDate,
     });
 ```
 
+* ##### Use the Activity API endpoint to gather insights into your subscribers'overall email engagement
+```c#
+var email = "valid@example.com";    // Subscriber email address
+
+ZeroBounceTest.Instance.GetActivity(email,
+    response =>
+    {
+        Debug.WriteLine("GetActivity success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("GetActivity failure error " + error);
+        // ... your implementation
+    });
+```
+
 * ##### The sendfile API allows user to send a file for bulk email validation
 ```c#
 var filePath = File("<FILE_PATH>"); // The csv or txt file
-var emailAddressColumn = 3;         // The index of "email" column in the file. Index starts at 1
 var options = new SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
+options.EmailAddressColumn=3            // The index of "email" column in the file. Index starts at 1
 options.FirstNameColumn = 4;            // The index of "first name" column in the file
 options.LastNameColumn = 5;             // The index of "last name" column in the file
 options.GenderColumn = 6;               // The index of "gender" column in the file
@@ -87,7 +104,6 @@ options.HasHeaderRow = true;            // If this is `true` the first row is co
 
 ZeroBounce.Instance.SendFile(
     filePath,
-    emailAddressColumn,
     options,
     response =>
     {
@@ -158,15 +174,17 @@ ZeroBounce.Instance.DeleteFile(fileId,
 * ##### The scoringSendfile API allows user to send a file for bulk email validation
 ```c#
 var filePath = File("<FILE_PATH>"); // The csv or txt file
-var emailAddressColumn = 3;         // The index of "email" column in the file. Index starts at 1
-var returnUrl = "https://domain.com/called/after/processing/request";
-var hasHeaderRow = true;            // If this is `true` the first row is considered as table headers
+
+var options = new SendFileOptions();
+
+options.ReturnUrl = "https://domain.com/called/after/processing/request";
+options.EmailAddressColumn=3            // The index of "email" column in the file. Index starts at 1
+options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
+
 
 ZeroBounce.Instance.ScoringSendFile(
     filePath,
-    emailAddressColumn,
-    returnUrl,
-    hasHeaderRow,
+    options,
     response =>
     {
         Debug.WriteLine("SendFile success response " + response);

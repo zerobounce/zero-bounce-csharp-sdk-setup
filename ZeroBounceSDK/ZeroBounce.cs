@@ -6,25 +6,23 @@ using Newtonsoft.Json;
 
 namespace ZeroBounceSDK
 {
-    public sealed class ZeroBounce
+    public class ZeroBounce
     {
-        private static readonly ZeroBounce _instance = new ZeroBounce();
+        protected static readonly ZeroBounce _instance = new ZeroBounce();
 
         // Explicit static constructor to tell C# compiler
         // not to mark type as beforefieldinit
         static ZeroBounce()
         {
         }
-
-        private ZeroBounce()
+        protected ZeroBounce()
         {
         }
-
         public static ZeroBounce Instance => _instance;
 
         private const string ApiBaseUrl = "https://api.zerobounce.net/v2";
         private const string BulkApiBaseUrl = "https://bulkapi.zerobounce.net/v2";
-        private readonly HttpClient _client = new HttpClient();
+        protected HttpClient _client = new HttpClient();
         private string _apiKey;
 
         public void Initialize(string apiKey)
@@ -75,6 +73,19 @@ namespace ZeroBounceSDK
                 failureCallback).Wait();
         }
 
+        /// <param name="email">The email address for which we are interested in getting the engagement</param>
+        public void GetActivity(string email, Action<ZBActivityResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            _sendRequest(
+                ApiBaseUrl + "/activity?api_key=" + _apiKey
+                + "&email=" + email,
+                successCallback,
+                failureCallback).Wait();
+        }
+
         /// <param name="fileId">The returned file ID when calling sendFile API.</param>
         /// <param name="successCallback"> The success callback function, called with a ZBFileStatusResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
@@ -92,7 +103,7 @@ namespace ZeroBounceSDK
         {
             _FileStatus(true, fileId, successCallback, failureCallback);
         }
-        
+
         private void _FileStatus(bool scoring, string fileId,
             Action<ZBFileStatusResponse> successCallback, Action<string> failureCallback)
         {
@@ -107,11 +118,13 @@ namespace ZeroBounceSDK
         public class SendFileOptions
         {
             public string ReturnUrl;
+            public int EmailAddressColumn;
             public int FirstNameColumn;
             public int LastNameColumn;
             public int GenderColumn;
             public int IpAddressColumn;
             public bool HasHeaderRow;
+            public bool RemoveDuplicate;
         }
         
         /// <summary>
@@ -119,14 +132,10 @@ namespace ZeroBounceSDK
         /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         /// </summary>
-        public void ScoringSendFile(string filePath, int emailAddressColumn, string returnUrl, bool hasHeaderRow,
+        public void ScoringSendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(true, filePath, emailAddressColumn, new SendFileOptions
-            {
-                ReturnUrl = returnUrl,
-                HasHeaderRow = hasHeaderRow,
-            }, successCallback, failureCallback);
+            _SendFile(true, filePath, options, successCallback, failureCallback);
         }
 
         /// <summary>
@@ -134,13 +143,13 @@ namespace ZeroBounceSDK
         /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         /// </summary>
-        public void SendFile(string filePath, int emailAddressColumn, SendFileOptions options,
+        public void SendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(false, filePath, emailAddressColumn, options, successCallback, failureCallback);
+            _SendFile(false, filePath, options, successCallback, failureCallback);
         }
-        
-        private async void _SendFile(bool scoring, string filePath, int emailAddressColumn, SendFileOptions options,
+
+        private async void _SendFile(bool scoring, string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
@@ -152,14 +161,12 @@ namespace ZeroBounceSDK
                 content.Add(new StreamContent(file), "file", Path.GetFileName(filePath));
 
                 content.Add(new StringContent(_apiKey), "api_key");
-                content.Add(new StringContent(emailAddressColumn.ToString()), "email_address_column");
 
                 if (options != null)
                 {
+                    content.Add(new StringContent(options.EmailAddressColumn.ToString()), "email_address_column");
                     if (options.ReturnUrl != null)
                         content.Add(new StringContent(options.ReturnUrl), "return_url");
-                    if (options.HasHeaderRow)
-                        content.Add(new StringContent("true"), "has_header_row");
                     if (options.FirstNameColumn > 0)
                         content.Add(new StringContent(options.FirstNameColumn.ToString()), "first_name_column");
                     if (options.LastNameColumn > 0)
@@ -168,6 +175,10 @@ namespace ZeroBounceSDK
                         content.Add(new StringContent(options.GenderColumn.ToString()), "gender_column");
                     if (options.IpAddressColumn > 0)
                         content.Add(new StringContent(options.IpAddressColumn.ToString()), "ip_address_column");
+                    if (options.HasHeaderRow)
+                        content.Add(new StringContent("true"), "has_header_row");
+                    if (options.RemoveDuplicate)
+                        content.Add(new StringContent("true"), "remove_duplicate");
                 }
 
                 var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendFile";
@@ -175,6 +186,7 @@ namespace ZeroBounceSDK
                 var responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
                 successCallback(response);
+                file.Close();
             }
             catch (Exception e)
             {
@@ -203,7 +215,7 @@ namespace ZeroBounceSDK
         {
             _GetFile(false, fileId, localDownloadPath, successCallback, failureCallback);
         }
-        
+
         private async void _GetFile(bool scoring, string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
@@ -215,7 +227,7 @@ namespace ZeroBounceSDK
                 var stream = await _client.GetStreamAsync(url);
                
                 var dirPath = Path.GetDirectoryName(localDownloadPath);
-                if(dirPath != null) Directory.CreateDirectory(dirPath);
+                if(dirPath != null & dirPath != "") Directory.CreateDirectory(dirPath);
                 var fileStream = new FileStream(localDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096,
                     true);
                 await stream.CopyToAsync(fileStream);
@@ -246,7 +258,7 @@ namespace ZeroBounceSDK
         public void DeleteFile(string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
             _DeleteFile(false, fileId, successCallback, failureCallback);
         }
-        
+
         private void _DeleteFile(bool scoring, string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
             if (InvalidApiKey(failureCallback)) return;
 
@@ -255,12 +267,12 @@ namespace ZeroBounceSDK
                 successCallback,
                 failureCallback).Wait();
         }
-        
+
         private bool InvalidApiKey(Action<string> failureCallback)
         {
             if (_apiKey != null) return false;
             failureCallback("ZeroBounce SDK is not initialized. " +
-                            "Please call ZeroBounceSDK.initialize(context, apiKey) first");
+                            "Please call ZeroBounce.Instance.Initialize(apiKey) first");
             return true;
         }
 
