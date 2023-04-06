@@ -19,7 +19,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <None Include="..\..\..\..\Downloads\download\zerobounce-logo.png">
+      <None Include="..\zerobounce-logo.png">
         <Pack>True</Pack>
         <PackagePath>\</PackagePath>
       </None>
@@ -30,7 +30,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <PackageReference Include="Newtonsoft.Json" Version="12.0.2" />
+      <PackageReference Include="Newtonsoft.Json" Version="13.0.2" />
     </ItemGroup>
 
 </Project>
