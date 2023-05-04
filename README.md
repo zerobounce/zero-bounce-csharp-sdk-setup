@@ -1,6 +1,6 @@
 ## Zero Bounce C# SDK
 This SDK contains methods for interacting easily with ZeroBounce API.
-More information about ZeroBounce you can find in the [official documentation](https://www.zerobounce.net/docs/).
+More information about ZeroBounce you can find in the [official documentation](https://www.zerobounce.in/docs/).
 
 ## INSTALLATION
 You can install by searching for ZeroBounceSDK in NuGet package manager browser or just use the this command:

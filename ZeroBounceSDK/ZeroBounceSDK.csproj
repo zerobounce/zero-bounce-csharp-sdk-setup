@@ -3,20 +3,20 @@
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Title>ZeroBounceSDK</Title>
+        <Title>ZeroBounceSDK-India</Title>
         <Authors>ZeroBounceIntegrations,aolariu</Authors>
 		<License>MIT</License>
 		<PackageVersion>1.1.1</PackageVersion>
 		<Version>1.1.1</Version>
 		<Company>ZeroBounce</Company>
-		<Description>Official C# ZeroBounce SDK</Description>
-		<PackageProjectUrl>https://www.zerobounce.net/</PackageProjectUrl>
+		<Description>Official C# ZeroBounce SDK - India</Description>
+		<PackageProjectUrl>https://www.zerobounce.in/</PackageProjectUrl>
 		<PackageIcon>zerobounce-logo.png</PackageIcon>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
-		<RepositoryUrl>https://github.com/zerobounce/zero-bounce-php-sdk-setup</RepositoryUrl>
+		<RepositoryUrl>https://github.com/zerobounce/zero-bounce-india-csharp-sdk-setup</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageTags>zerobounce</PackageTags>
-		<PackageId>ZeroBounce.SDK</PackageId>
+		<PackageId>ZeroBounce.SDK.India</PackageId>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
     </PropertyGroup>
 
