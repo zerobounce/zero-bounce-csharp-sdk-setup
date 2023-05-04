@@ -4,10 +4,10 @@
         <TargetFramework>netstandard2.0</TargetFramework>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <Title>ZeroBounceSDK</Title>
-        <Authors>zerobounce</Authors>
+        <Authors>ZeroBounceIntegrations,aolariu</Authors>
 		<License>MIT</License>
-		<PackageVersion>0.0.1</PackageVersion>
-		<Version>1.1.0</Version>
+		<PackageVersion>1.1.1</PackageVersion>
+		<Version>1.1.1</Version>
 		<Company>ZeroBounce</Company>
 		<Description>Official C# ZeroBounce SDK</Description>
 		<PackageProjectUrl>https://www.zerobounce.net/</PackageProjectUrl>
@@ -16,6 +16,8 @@
 		<RepositoryUrl>https://github.com/zerobounce/zero-bounce-php-sdk-setup</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
 		<PackageTags>zerobounce</PackageTags>
+		<PackageId>ZeroBounce.SDK</PackageId>
+		<PackageLicenseExpression>MIT</PackageLicenseExpression>
     </PropertyGroup>
 
     <ItemGroup>
