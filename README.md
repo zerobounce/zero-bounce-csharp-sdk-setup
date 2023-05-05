@@ -5,7 +5,7 @@ More information about ZeroBounce you can find in the [official documentation](h
 ## INSTALLATION
 You can install by searching for ZeroBounceSDK in NuGet package manager browser or just use the this command:
 ```bash
-Install-Package ZeroBounceSDK
+Install-Package ZeroBounce.SDK
 ```
 
 ## USAGE
