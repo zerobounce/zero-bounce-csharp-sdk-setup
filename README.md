@@ -39,6 +39,28 @@ ZeroBounce.Instance.Validate(email, ipAddress,
     });
 ```
 
+* ##### Validate a batch of email addresses
+```c#
+var email = "<EMAIL_ADDRESS>";   // The email address you want to validate
+var ipAddress = "127.0.0.1";     // The IP Address the email signed up from (Optional)
+
+List<ZBValidateEmailRow> emailBatch = new List<ZBValidateEmailRow>
+{ 
+    new ZBValidateEmailRow { EmailAddress = email, IpAddress = ipAddress }
+};
+ZeroBounceTest.Instance.ValidateBatch(emailBatch,
+    response =>
+    {
+        Debug.WriteLine(response.EmailBatch[0].Address);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("Validate failure error " + error);
+        // ... your implementation
+    });
+```
+
 * ##### Check how many credits you have left on your account
 ```c#
 ZeroBounce.Instance.GetCredits(

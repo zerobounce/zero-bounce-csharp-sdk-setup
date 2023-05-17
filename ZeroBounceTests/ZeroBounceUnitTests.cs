@@ -1,6 +1,4 @@
-using System;
 using System.Globalization;
-using System.IO;
 using ZeroBounceSDK;
 
 namespace ZeroBounceTests;
@@ -185,20 +183,112 @@ public class Tests
     public void Validate()
     {
         ZeroBounceTest.Instance.MockResponse(@"{
-        ""address"": ""valid@example.com"",
-        ""status"": ""valid"",
-        ""sub_status"": """",
-        ""domain_age_days"": ""9692"",
-        ""firstname"": ""zero"",
-        ""lastname"": ""bounce"",
-        ""gender"": ""male""
-    }");
+            ""address"": ""valid@example.com"",
+            ""status"": ""valid"",
+            ""sub_status"": """",
+            ""domain_age_days"": ""9692"",
+            ""firstname"": ""zero"",
+            ""lastname"": ""bounce"",
+            ""gender"": ""male""
+        }");
 
         ZeroBounceTest.Instance.Validate("valid@example.com", "127.0.0.1",
             response =>
             {
                 Assert.That(response.Address, Is.EqualTo("valid@example.com"));
                 Assert.That(response.Status, Is.EqualTo(ZBValidateStatus.Valid));
+            },
+            error =>
+            {
+                Assert.Fail(error);
+            }
+        );
+    }
+
+    [Test]
+    public void ValidateBatch()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""email_batch"": [
+                {
+                    ""address"": ""valid@example.com"",
+                    ""status"": ""valid"",
+                    ""sub_status"": """",
+                    ""free_email"": false,
+                    ""did_you_mean"": null,
+                    ""account"": null,
+                    ""domain"": null,
+                    ""domain_age_days"": ""9692"",
+                    ""smtp_provider"": ""example"",
+                    ""mx_found"": ""true"",
+                    ""mx_record"": ""mx.example.com"",
+                    ""firstname"": ""zero"",
+                    ""lastname"": ""bounce"",
+                    ""gender"": ""male"",
+                    ""country"": ""Australia"",
+                    ""region"": null,
+                    ""city"": null,
+                    ""zipcode"": null,
+                    ""processed_at"": ""2023-05-16 14:06:01.853""
+                },
+                {
+                    ""address"": ""invalid@example.com"",
+                    ""status"": ""invalid"",
+                    ""sub_status"": ""mailbox_not_found"",
+                    ""free_email"": false,
+                    ""did_you_mean"": null,
+                    ""account"": null,
+                    ""domain"": null,
+                    ""domain_age_days"": ""9692"",
+                    ""smtp_provider"": ""example"",
+                    ""mx_found"": ""true"",
+                    ""mx_record"": ""mx.example.com"",
+                    ""firstname"": ""zero"",
+                    ""lastname"": ""bounce"",
+                    ""gender"": ""male"",
+                    ""country"": ""Australia"",
+                    ""region"": null,
+                    ""city"": null,
+                    ""zipcode"": null,
+                    ""processed_at"": ""2023-05-16 14:06:01.853""
+                },
+                {
+                    ""address"": ""disposable@example.com"",
+                    ""status"": ""do_not_mail"",
+                    ""sub_status"": ""disposable"",
+                    ""free_email"": false,
+                    ""did_you_mean"": null,
+                    ""account"": null,
+                    ""domain"": null,
+                    ""domain_age_days"": ""9692"",
+                    ""smtp_provider"": ""example"",
+                    ""mx_found"": ""true"",
+                    ""mx_record"": ""mx.example.com"",
+                    ""firstname"": ""zero"",
+                    ""lastname"": ""bounce"",
+                    ""gender"": ""male"",
+                    ""country"": null,
+                    ""region"": null,
+                    ""city"": null,
+                    ""zipcode"": null,
+                    ""processed_at"": ""2023-05-16 14:06:01.853""
+                }
+            ],
+            ""errors"": []
+        }");
+
+        List<ZBValidateEmailRow> emailBatch = new List<ZBValidateEmailRow>
+        { 
+            new ZBValidateEmailRow { EmailAddress = "valid@example.com", IpAddress = "1.1.1.1" },
+            new ZBValidateEmailRow { EmailAddress = "invalid@example.com", IpAddress = "1.1.1.1" },
+            new ZBValidateEmailRow { EmailAddress = "disposable@example.com", IpAddress = null } 
+        };
+        ZeroBounceTest.Instance.ValidateBatch(emailBatch,
+            response =>
+            {
+                Assert.That(response.EmailBatch.Count, Is.EqualTo(3));
+                Assert.That(response.Errors.Count, Is.EqualTo(0));
+                Assert.That(response.EmailBatch[0].Address, Is.EqualTo("valid@example.com"));
             },
             error =>
             {
