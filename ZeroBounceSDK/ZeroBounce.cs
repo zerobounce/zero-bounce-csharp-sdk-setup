@@ -22,8 +22,8 @@ namespace ZeroBounceSDK
         }
         public static ZeroBounce Instance => _instance;
 
-        private const string ApiBaseUrl = "https://api.zerobounce.net/v2";
-        private const string BulkApiBaseUrl = "https://bulkapi.zerobounce.net/v2";
+        private const string ApiBaseUrl = "https://api.zerobounce.in/v2";
+        private const string BulkApiBaseUrl = "https://bulkapi.zerobounce.in/v2";
         protected HttpClient _client = new HttpClient();
         private string _apiKey;
 

@@ -1,11 +1,11 @@
 ## Zero Bounce C# SDK
 This SDK contains methods for interacting easily with ZeroBounce API.
-More information about ZeroBounce you can find in the [official documentation](https://www.zerobounce.net/docs/).
+More information about ZeroBounce you can find in the [official documentation](https://www.zerobounce.in/docs/).
 
 ## INSTALLATION
 You can install by searching for ZeroBounceSDK in NuGet package manager browser or just use the this command:
 ```bash
-Install-Package ZeroBounce.SDK
+Install-Package ZeroBounce.SDK.India
 ```
 
 ## USAGE
@@ -30,6 +30,28 @@ ZeroBounce.Instance.Validate(email, ipAddress,
     response =>
     {
         Debug.WriteLine("Validate success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("Validate failure error " + error);
+        // ... your implementation
+    });
+```
+
+* ##### Validate a batch of email addresses
+```c#
+var email = "<EMAIL_ADDRESS>";   // The email address you want to validate
+var ipAddress = "127.0.0.1";     // The IP Address the email signed up from (Optional)
+
+List<ZBValidateEmailRow> emailBatch = new List<ZBValidateEmailRow>
+{ 
+    new ZBValidateEmailRow { EmailAddress = email, IpAddress = ipAddress }
+};
+ZeroBounceTest.Instance.ValidateBatch(emailBatch,
+    response =>
+    {
+        Debug.WriteLine(response.EmailBatch[0].Address);
         // ... your implementation
     },
     error =>
