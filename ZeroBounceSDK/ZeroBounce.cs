@@ -1,6 +1,8 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -43,6 +45,24 @@ namespace ZeroBounceSDK
                 ApiBaseUrl + "/validate?api_key=" + _apiKey + "&email=" + email + "&ip_address=" + (ipAddress ?? ""),
                 successCallback,
                 failureCallback).Wait(); 
+        }
+
+        /// <param name="emailBatch">A list of ZBValidateEmailRow objects</param>
+        /// <param name="successCallback"> The success callback function, called with a ZBValidateResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
+        public void ValidateBatch(List<ZBValidateEmailRow> emailBatch, Action<ZBValidateBatchResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            var requestData = new ZBValidateEmailRequest { ApiKey = _apiKey, EmailBatch = emailBatch };
+            var json = JsonConvert.SerializeObject(requestData);
+
+            _sendJsonRequest(
+                BulkApiBaseUrl + "/validatebatch",
+                json,
+                successCallback,
+                failureCallback).Wait();
         }
 
         /// <sumary>This API will tell you how many credits you have left on your account. It's simple, fast and easy to use.</sumary>
@@ -283,6 +303,23 @@ namespace ZeroBounceSDK
             {
                 var responseString = await _client.GetStringAsync(url);
                 //Debug.WriteLine("sendRequest response: "+responseString);
+                var response = JsonConvert.DeserializeObject<T>(responseString);
+                successCallback(response);
+            }
+            catch (Exception e)
+            {
+                failureCallback(e.Message);
+            }
+        }
+
+        private async Task _sendJsonRequest<T>(string url, string json, Action<T> successCallback, Action<string> failureCallback)
+            where T : ZBResponse
+        {
+            try
+            {
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var result = await _client.PostAsync(url, content);
+                string responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<T>(responseString);
                 successCallback(response);
             }
