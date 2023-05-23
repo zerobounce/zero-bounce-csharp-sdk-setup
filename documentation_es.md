@@ -1,29 +1,24 @@
-## ZeroBounce SDK para C#
-
-Este SDK contiene métodos para interactuar fácilmente con la API de ZeroBounce.
-Puede encontrar más información sobre ZeroBounce en la [documentación oficial](https://www.zerobounce.net/docs/).
-
-## INSTALACIÓN
+#### INSTALACIÓN
 Puede instalar el SDK buscando ZeroBounceSDK en el navegador del administrador de paquetes NuGet o simplemente use el siguiente comando:
 ```bash
 Install-Package ZeroBounce.SDK
 ```
 
-## USO
+#### USO
 Importe el SDK en su archivo:
-```c#
+```c###
 using ZeroBounceSDK;
 ``` 
 
 Inicialice el SDK con su clave de API:
-```c# 
+```c### 
 ZeroBounce.Instance.Initialize("<SU_CLAVE_DE_API>");
 ```
 
-## Ejemplos
+#### Ejemplos
 Luego puede utilizar cualquiera de los métodos del SDK, por ejemplo:
-* ##### Validar una dirección de correo electrónico
-```c#
+* ####### Validar una dirección de correo electrónico
+```c###
 var email = "<DIRECCIÓN_DE_CORREO_ELECTRÓNICO>";   // La dirección de correo electrónico que desea validar
 var ipAddress = "127.0.0.1";     // La dirección IP desde la cual se registró el correo electrónico (opcional)
 
@@ -40,8 +35,8 @@ ZeroBounce.Instance.Validate(email, ipAddress,
     });
 ```
 
-* ##### Verificar cuántos créditos le quedan en su cuenta
-```c#
+* ####### Verificar cuántos créditos le quedan en su cuenta
+```c###
 ZeroBounce.Instance.GetCredits(
     response =>
     {
@@ -55,8 +50,8 @@ ZeroBounce.Instance.GetCredits(
     });
 ```
 
-* ##### Verificar el uso de su API durante un período de tiempo específico
-```c#
+* ####### Verificar el uso de su API durante un período de tiempo específico
+```c###
 var startDate = new DateTime();    // La fecha de inicio de cuando desea ver el uso de la API
 var endDate = new DateTime();      // La fecha de finalización de cuando desea ver el uso de la API
 
@@ -73,8 +68,8 @@ ZeroBounce.Instance.GetApiUsage(startDate, endDate,
     });
 ```
 
-* ##### Utilice el endpoint de actividad para obtener información sobre el compromiso general de sus suscriptores por correo electrónico
-```c#
+* ####### Utilice el endpoint de actividad para obtener información sobre el compromiso general de sus suscriptores por correo electrónico
+```c###
 var email = "valid@example.com";    // Dirección de correo electrónico del suscriptor
 
 ZeroBounceTest.Instance.GetActivity(email,
@@ -90,8 +85,8 @@ ZeroBounceTest.Instance.GetActivity(email,
     });
 ```
 
-* ##### El API sendfile permite al usuario enviar un archivo para validación masiva de correo electrónico
-```c#
+* ####### El API sendfile permite al usuario enviar un archivo para validación masiva de correo electrónico
+```c###
 var filePath = File("<RUTA_DEL_ARCHIVO>"); // El archivo CSV o TXT
 var options = new SendFileOptions();
 
@@ -120,8 +115,8 @@ ZeroBounce.Instance.SendFile(
     });
 ```
 
-* ##### El API getfile permite a los usuarios obtener el archivo de resultados de validación para el archivo que se envió utilizando el método sendfile
-```c#
+* ####### El API getfile permite a los usuarios obtener el archivo de resultados de validación para el archivo que se envió utilizando el método sendfile
+```c###
 var fileId = "<ID_DE_ARCHIVO>";                       // El ID de archivo devuelto al llamar al API sendfile
 var localDownloadPath = "<RUTA_DE_DESCARGA_DEL_ARCHIVO>"; // La ubicación donde se guardará el archivo descargado
 
@@ -138,8 +133,8 @@ ZeroBounce.Instance.GetFile(fileId, localDownloadPath,
     });
 ```
 
-* ##### Verificar el estado de un archivo cargado mediante el método "sendFile"
-```c#
+* ####### Verificar el estado de un archivo cargado mediante el método "sendFile"
+```c###
 var fileId = "<ID_DE_ARCHIVO>";                       // El ID de archivo devuelto al llamar al API sendfile
 
 ZeroBounce.Instance.FileStatus(fileId,
@@ -155,8 +150,8 @@ ZeroBounce.Instance.FileStatus(fileId,
     });
 ```
 
-* ##### Eliminar el archivo que se envió utilizando el método "sendFile". El archivo solo se puede eliminar cuando su estado es _`Completado`_
-```c#
+* ####### Eliminar el archivo que se envió utilizando el método "sendFile". El archivo solo se puede eliminar cuando su estado es _`Completado`_
+```c###
 var fileId = "<ID_DE_ARCHIVO>";                       // El ID de archivo devuelto al llamar al API sendfile
 
 ZeroBounce.Instance.DeleteFile(fileId,
@@ -172,10 +167,10 @@ ZeroBounce.Instance.DeleteFile(fileId,
     });
 ```
 
-### API de puntuación de inteligencia artificial
+##### API de puntuación de inteligencia artificial
 
-* ##### El API scoringSendfile permite al usuario enviar un archivo para la puntuación masiva de correo electrónico
-```c#
+* ####### El API scoringSendfile permite al usuario enviar un archivo para la puntuación masiva de correo electrónico
+```c###
 var filePath = File("<RUTA_DEL_ARCHIVO>"); // El archivo CSV o TXT
 
 var options = new SendFileOptions();
@@ -200,10 +195,10 @@ ZeroBounce.Instance.ScoringSendFile(
     });
 ```
 
-* ##### El API scoringGetFile permite a los usuarios obtener
+* ####### El API scoringGetFile permite a los usuarios obtener
 
 el archivo de resultados de validación para el archivo que se envió utilizando el método scoringSendfile
-```c#
+```c###
 var fileId = "<ID_DE_ARCHIVO>";                       // El ID de archivo devuelto al llamar al API scoringSendfile
 var localDownloadPath = "<RUTA_DE_DESCARGA_DEL_ARCHIVO>"; // La ubicación donde se guardará el archivo descargado
 
@@ -220,8 +215,8 @@ ZeroBounce.Instance.ScoringGetFile(fileId, localDownloadPath,
     });
 ```
 
-* ##### Verificar el estado de un archivo cargado mediante el método "scoringSendFile"
-```c#
+* ####### Verificar el estado de un archivo cargado mediante el método "scoringSendFile"
+```c###
 var fileId = "<ID_DE_ARCHIVO>";                       // El ID de archivo devuelto al llamar al API scoringSendfile
 
 ZeroBounce.Instance.ScoringFileStatus(fileId,
@@ -237,8 +232,8 @@ ZeroBounce.Instance.ScoringFileStatus(fileId,
     });
 ```
 
-* ##### Eliminar el archivo que se envió utilizando el método "scoringSendFile". El archivo solo se puede eliminar cuando su estado es _`Completado`_
-```c#
+* ####### Eliminar el archivo que se envió utilizando el método "scoringSendFile". El archivo solo se puede eliminar cuando su estado es _`Completado`_
+```c###
 var fileId = "<ID_DE_ARCHIVO>";                       // El ID de archivo devuelto al llamar al API scoringSendfile
 
 ZeroBounce.Instance.ScoringDeleteFile(fileId,
