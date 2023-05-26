@@ -93,9 +93,7 @@ var options = new SendFileOptions();
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
 options.EmailAddressColumn=3            // El índice de columna "email" en el archivo. El índice comienza en 1
 options.FirstNameColumn = 4;            // El índice de columna "first name" en el archivo
-options.LastNameColumn = 5;             // El índice de columna
-
- "last name" en el archivo
+options.LastNameColumn = 5;             // El índice de columna "last name" en el archivo
 options.GenderColumn = 6;               // El índice de columna "gender" en el archivo
 options.IpAddressColumn = 7;            // El índice de columna "IP address" en el archivo
 options.HasHeaderRow = true;            // Si esto es `true`, la primera fila se considera como encabezados de tabla
@@ -195,9 +193,7 @@ ZeroBounce.Instance.ScoringSendFile(
     });
 ```
 
-* ####### El API scoringGetFile permite a los usuarios obtener
-
-el archivo de resultados de validación para el archivo que se envió utilizando el método scoringSendfile
+* ####### El API scoringGetFile permite a los usuarios obtener el archivo de resultados de validación para el archivo que se envió utilizando el método scoringSendfile
 ```c###
 var fileId = "<ID_DE_ARCHIVO>";                       // El ID de archivo devuelto al llamar al API scoringSendfile
 var localDownloadPath = "<RUTA_DE_DESCARGA_DEL_ARCHIVO>"; // La ubicación donde se guardará el archivo descargado
