@@ -87,7 +87,7 @@ ZeroBounceTest.Instance.GetActivity(email,
 
 * ####### El API sendfile permite al usuario enviar un archivo para validación masiva de correo electrónico
 ```c###
-var filePath = File("<RUTA_DEL_ARCHIVO>"); // El archivo CSV o TXT
+var filePath = "<RUTA_DEL_ARCHIVO>"; // El archivo CSV o TXT
 var options = new SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
@@ -169,7 +169,7 @@ ZeroBounce.Instance.DeleteFile(fileId,
 
 * ####### El API scoringSendfile permite al usuario enviar un archivo para la puntuación masiva de correo electrónico
 ```c###
-var filePath = File("<RUTA_DEL_ARCHIVO>"); // El archivo CSV o TXT
+var filePath = "<RUTA_DEL_ARCHIVO>"; // El archivo CSV o TXT
 
 var options = new SendFileOptions();
 

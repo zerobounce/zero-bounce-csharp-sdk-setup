@@ -109,7 +109,7 @@ ZeroBounceTest.Instance.GetActivity(email,
 
 * ####### The sendfile API allows user to send a file for bulk email validation
 ```c###
-var filePath = File("<FILE_PATH>"); // The csv or txt file
+var filePath = "<FILE_PATH>"; // The csv or txt file
 var options = new SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
@@ -191,7 +191,7 @@ ZeroBounce.Instance.DeleteFile(fileId,
 
 * ####### The scoringSendfile API allows user to send a file for bulk email validation
 ```c###
-var filePath = File("<FILE_PATH>"); // The csv or txt file
+var filePath = "<FILE_PATH>"; // The csv or txt file
 
 var options = new SendFileOptions();
 
