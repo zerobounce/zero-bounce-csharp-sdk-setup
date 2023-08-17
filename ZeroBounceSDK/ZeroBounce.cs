@@ -201,7 +201,7 @@ namespace ZeroBounceSDK
                         content.Add(new StringContent("true"), "remove_duplicate");
                 }
 
-                var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendFile";
+                var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendfile";
                 var result = await _client.PostAsync(url, content);
                 var responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
