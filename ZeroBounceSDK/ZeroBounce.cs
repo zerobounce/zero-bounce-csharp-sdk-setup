@@ -243,7 +243,7 @@ namespace ZeroBounceSDK
 
             try
             {
-                var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/getFile?api_key=" + _apiKey + "&file_id=" + fileId;
+                var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/getfile?api_key=" + _apiKey + "&file_id=" + fileId;
                 var stream = await _client.GetStreamAsync(url);
                
                 var dirPath = Path.GetDirectoryName(localDownloadPath);
