@@ -72,7 +72,7 @@ ZeroBounce.Instance.GetApiUsage(startDate, endDate,
 ```c###
 var email = "valid@example.com";    // Dirección de correo electrónico del suscriptor
 
-ZeroBounceTest.Instance.GetActivity(email,
+ZeroBounce.Instance.GetActivity(email,
     response =>
     {
         Debug.WriteLine("GetActivity success response " + response);

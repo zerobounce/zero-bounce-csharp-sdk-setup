@@ -44,7 +44,7 @@ List<ZBValidateEmailRow> emailBatch = new List<ZBValidateEmailRow>
 { 
     new ZBValidateEmailRow { EmailAddress = email, IpAddress = ipAddress }
 };
-ZeroBounceTest.Instance.ValidateBatch(emailBatch,
+ZeroBounce.Instance.ValidateBatch(emailBatch,
     response =>
     {
         Debug.WriteLine(response.EmailBatch[0].Address);
@@ -94,7 +94,7 @@ ZeroBounce.Instance.GetApiUsage(startDate, endDate,
 ```c###
 var email = "valid@example.com";    // Subscriber email address
 
-ZeroBounceTest.Instance.GetActivity(email,
+ZeroBounce.Instance.GetActivity(email,
     response =>
     {
         Debug.WriteLine("GetActivity success response " + response);
