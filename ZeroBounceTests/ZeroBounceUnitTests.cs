@@ -298,6 +298,43 @@ public class Tests
     }
 
     [Test]
+    public void EmailFinder()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""email"": ""john.doe@example.com"",
+            ""domain"": ""example.com"",
+            ""format"": ""first.last"",
+            ""status"": ""valid"",
+            ""sub_status"": """",
+            ""confidence"": ""HIGH"",
+            ""did_you_mean"": """",
+            ""failure_reason"": """",
+            ""other_domain_formats"": [
+            {
+                ""format"": ""first_last"",
+                ""confidence"": ""HIGH"",
+            },
+            {
+                ""format"": ""first"",
+                ""confidence"": ""MEDIUM"",
+            }
+            ]
+        }");
+
+        ZeroBounceTest.Instance.EmailFinder("example.com", "john", "", "doe",
+            response =>
+            {
+                Assert.That(response.Email, Is.EqualTo("john.doe@example.com"));
+                Assert.That(response.OtherDomainFormats[1].Format, Is.EqualTo("first"));
+            },
+            error =>
+            {
+                Assert.Fail(error);
+            }
+        );
+    }
+
+    [Test]
     public void SendFile()
     {
         ZeroBounceTest.Instance.MockResponse(@"{

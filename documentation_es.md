@@ -85,6 +85,26 @@ ZeroBounce.Instance.GetActivity(email,
     });
 ```
 
+* ####### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain.
+```c###
+var domain = "example.com";  // The email domain for which to find the email format.
+var firstName = "john";      // The first name of the person whose email format is being searched. [optional]
+var middleName = "";         // The middle name of the person whose email format is being searched. [optional]
+var lastName = "doe";        // The last name of the person whose email format is being searched. [optional]
+
+ZeroBounce.Instance.EmailFinder(domain, firstName, middleName, lastName,
+    response =>
+    {
+        Debug.WriteLine("EmailFinder success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("EmailFinder failure error " + error);
+        // ... your implementation
+    });
+```
+
 * ####### El API sendfile permite al usuario enviar un archivo para validación masiva de correo electrónico
 ```c###
 var filePath = "<RUTA_DEL_ARCHIVO>"; // El archivo CSV o TXT

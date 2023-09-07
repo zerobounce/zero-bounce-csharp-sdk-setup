@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -102,6 +103,27 @@ namespace ZeroBounceSDK
             _sendRequest(
                 ApiBaseUrl + "/activity?api_key=" + _apiKey
                 + "&email=" + email,
+                successCallback,
+                failureCallback).Wait();
+        }
+
+        /// <param name="domain">The email domain for which to find the email format.</param>
+        /// <param name="first_name">The first name of the person whose email format is being searched. [optional]</param>
+        /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
+        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        public void EmailFinder(
+            string domain, string firstName, string middleName, string lastName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            _sendRequest(
+                ApiBaseUrl + "/guessformat?api_key=" + _apiKey
+                + "&domain=" + (domain ?? "")
+                + "&first_name=" + (firstName ?? "")
+                + "&middle_name=" + (middleName ?? "")
+                + "&last_name=" + (lastName ?? ""),
                 successCallback,
                 failureCallback).Wait();
         }
