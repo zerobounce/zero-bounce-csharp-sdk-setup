@@ -111,7 +111,7 @@ ZeroBounce.Instance.GetActivity(email,
     });
 ```
 
-* ####### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain.
+* ##### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain.
 ```c###
 var domain = "example.com";  // The email domain for which to find the email format.
 var firstName = "john";      // The first name of the person whose email format is being searched. [optional]
