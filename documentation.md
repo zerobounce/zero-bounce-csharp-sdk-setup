@@ -133,12 +133,13 @@ var filePath = "<FILE_PATH>"; // The csv or txt file
 var options = new SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
-options.EmailAddressColumn=3            // The index of "email" column in the file. Index starts at 1
+options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
 options.FirstNameColumn = 4;            // The index of "first name" column in the file
 options.LastNameColumn = 5;             // The index of "last name" column in the file
 options.GenderColumn = 6;               // The index of "gender" column in the file
 options.IpAddressColumn = 7;            // The index of "IP address" column in the file
 options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
+options.RemoveDuplicate = false;        // If you want the system to remove duplicate emails (true or false, default is true). Please note that if we remove more than 50% of the lines because of duplicates (parameter is true), system will return a 400 bad request error as a safety net to let you know that more than 50% of the file has been modified.
 
 ZeroBounce.Instance.SendFile(
     filePath,
@@ -216,7 +217,7 @@ var filePath = "<FILE_PATH>"; // The csv or txt file
 var options = new SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
-options.EmailAddressColumn=3            // The index of "email" column in the file. Index starts at 1
+options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
 options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
 
 
