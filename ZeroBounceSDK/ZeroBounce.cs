@@ -177,7 +177,7 @@ namespace ZeroBounceSDK
         public void ScoringSendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(true, filePath, options, successCallback, failureCallback);
+            _SendFile(true, filePath, options, successCallback, failureCallback).Wait();
         }
 
         /// <summary>
@@ -188,10 +188,10 @@ namespace ZeroBounceSDK
         public void SendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(false, filePath, options, successCallback, failureCallback);
+            _SendFile(false, filePath, options, successCallback, failureCallback).Wait();
         }
 
-        private async void _SendFile(bool scoring, string filePath, SendFileOptions options,
+        private async Task _SendFile(bool scoring, string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
@@ -227,8 +227,8 @@ namespace ZeroBounceSDK
                 var result = await _client.PostAsync(url, content);
                 var responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
-                successCallback(response);
                 file.Close();
+                successCallback(response);
             }
             catch (Exception e)
             {
@@ -244,7 +244,7 @@ namespace ZeroBounceSDK
         public void ScoringGetFile(string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(true, fileId, localDownloadPath, successCallback, failureCallback);
+            _GetFile(true, fileId, localDownloadPath, successCallback, failureCallback).Wait();
         }
         
         /// <summary>
@@ -255,10 +255,10 @@ namespace ZeroBounceSDK
         public void GetFile(string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(false, fileId, localDownloadPath, successCallback, failureCallback);
+            _GetFile(false, fileId, localDownloadPath, successCallback, failureCallback).Wait();
         }
 
-        private async void _GetFile(bool scoring, string fileId, string localDownloadPath, 
+        private async Task _GetFile(bool scoring, string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
