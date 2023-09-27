@@ -227,8 +227,8 @@ namespace ZeroBounceSDK
                 var result = await _client.PostAsync(url, content);
                 var responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
-                successCallback(response);
                 file.Close();
+                successCallback(response);
             }
             catch (Exception e)
             {
