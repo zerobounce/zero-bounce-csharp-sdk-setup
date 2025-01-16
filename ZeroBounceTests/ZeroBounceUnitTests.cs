@@ -162,15 +162,30 @@ public class Tests
     public void GetActivity()
     {
         ZeroBounceTest.Instance.MockResponse(@"{
-            ""found"": true,
-            ""active_in_days"": ""180""
+            ""found"": false,
+            ""active_in_days"": null
         }");
+        ZeroBounceTest.Instance.GetActivity("invalid@exple.com",
+            response =>
+            {
+                Assert.That(response.Found, Is.EqualTo(false));
+                Assert.That(response.ActiveInDays, Is.EqualTo(null));
+            },
+            error =>
+            {
+                Assert.Fail(error);
+            }
+        );
 
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""found"": true,
+            ""active_in_days"": ""365+""
+        }");
         ZeroBounceTest.Instance.GetActivity("valid@example.com",
             response =>
             {
                 Assert.That(response.Found, Is.EqualTo(true));
-                Assert.That(response.ActiveInDays, Is.EqualTo(180));
+                Assert.That(response.ActiveInDays, Is.EqualTo("365+"));
             },
             error =>
             {

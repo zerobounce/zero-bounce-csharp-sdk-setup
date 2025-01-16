@@ -6,8 +6,8 @@
         <Title>ZeroBounceSDK</Title>
         <Authors>ZeroBounceIntegrations,aolariu</Authors>
 		<License>MIT</License>
-		<PackageVersion>1.3.2</PackageVersion>
-		<Version>1.3.2</Version>
+		<PackageVersion>1.3.3</PackageVersion>
+		<Version>1.3.3</Version>
 		<Company>ZeroBounce</Company>
 		<Description>Official C# ZeroBounce SDK</Description>
 		<PackageProjectUrl>https://www.zerobounce.net/</PackageProjectUrl>
