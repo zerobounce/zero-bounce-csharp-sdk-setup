@@ -24,7 +24,7 @@ namespace ZeroBounceSDK
         PossibleTypo,
         UnroutableIpAddress,
         LeadingPeriodRemoved,
-        DoesNotAccpetMail,
+        DoesNotAcceptMail,
         AliasAddress,
         RoleBasedCatchAll,
         Disposable,
@@ -79,7 +79,7 @@ namespace ZeroBounceSDK
                 case "leading_period_removed":
                     return ZBValidateSubStatus.LeadingPeriodRemoved;
                 case "does_not_accept_mail":
-                    return ZBValidateSubStatus.DoesNotAccpetMail;
+                    return ZBValidateSubStatus.DoesNotAcceptMail;
                 case "alias_address":
                     return ZBValidateSubStatus.AliasAddress;
                 case "role_based_catch_all":
@@ -152,7 +152,7 @@ namespace ZeroBounceSDK
                 case ZBValidateSubStatus.LeadingPeriodRemoved:
                     writer.WriteValue("leading_period_removed");
                     break;
-                case ZBValidateSubStatus.DoesNotAccpetMail:
+                case ZBValidateSubStatus.DoesNotAcceptMail:
                     writer.WriteValue("does_not_accept_mail");
                     break;
                 case ZBValidateSubStatus.AliasAddress:
