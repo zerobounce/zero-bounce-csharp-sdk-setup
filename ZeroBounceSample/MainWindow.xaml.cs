@@ -76,6 +76,26 @@ namespace ZeroBounceSample
                 response => Debug.WriteLine("DeleteFile success response " + response), 
                 error => Debug.WriteLine("DeleteFile failure error " + error));
         }
+
+        private void OnButtonClick(object? sender, RoutedEventArgs e)
+        {
+            Console.WriteLine("Button clicked!");
+            var dialog = new Window
+            {
+                Width = 300,
+                Height = 100,
+                Title = "Hello",
+                Content = new TextBlock
+                {
+                    Text = "Hello from Avalonia!",
+                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
+                }
+            };
+
+            dialog.ShowDialog(this);
+        }
+
     }
     
 }
