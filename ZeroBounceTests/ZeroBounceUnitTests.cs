@@ -322,7 +322,6 @@ public class Tests
             ""company_name"": """",
             ""did_you_mean"": """",
             ""failure_reason"": """"
-            ]
         }");
 
         ZeroBounceTest.Instance.FindEmailByDomain("example.com", "john", "", "doe",
