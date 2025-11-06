@@ -12,7 +12,7 @@ namespace ZeroBounceSDK
         [JsonProperty("status")] [JsonConverter(typeof(ZBValidateStatusConverter))]
         public ZBValidateStatus Status;
 
-        //[antispam_system, greylisted, mail_server_temporary_error, forcible_disconnect, mail_server_did_not_respond, timeout_exceeded, failed_smtp_connection, mailbox_quota_exceeded, exception_occurred, possible_traps, role_based, global_suppression, mailbox_not_found, no_dns_entries, failed_syntax_check, possible_typo, unroutable_ip_address, leading_period_removed, does_not_accept_mail, alias_address, role_based_catch_all, disposable, toxic]
+        //[antispam_system, greylisted, mail_server_temporary_error, forcible_disconnect, mail_server_did_not_respond, timeout_exceeded, failed_smtp_connection, mailbox_quota_exceeded, exception_occurred, possible_traps, role_based, global_suppression, mailbox_not_found, no_dns_entries, failed_syntax_check, possible_typo, unroutable_ip_address, leading_period_removed, does_not_accept_mail, alias_address, role_based_catch_all, disposable, toxic, accept_all]
         [JsonProperty("sub_status")] [JsonConverter(typeof(ZBValidateSubStatusConverter))]
         public ZBValidateSubStatus SubStatus;
 

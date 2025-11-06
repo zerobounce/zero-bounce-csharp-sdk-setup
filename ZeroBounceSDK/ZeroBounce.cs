@@ -23,14 +23,20 @@ namespace ZeroBounceSDK
         }
         public static ZeroBounce Instance => _instance;
 
-        private const string ApiBaseUrl = "https://api.zerobounce.net/v2";
         private const string BulkApiBaseUrl = "https://bulkapi.zerobounce.net/v2";
         protected HttpClient _client = new HttpClient();
         private string _apiKey;
+        private string _apiBaseUrl = ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL);
 
         public void Initialize(string apiKey)
         {
             _apiKey = apiKey;
+        }
+
+        public void Initialize(string apiKey, ZBApiURL apiBaseUrl)
+        {
+            _apiKey = apiKey;
+            _apiBaseUrl = ZBApiURLConverter.GetApiURLString(apiBaseUrl);
         }
 
         /// <param name="email">The email address you want to validate</param>
@@ -43,7 +49,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                ApiBaseUrl + "/validate?api_key=" + _apiKey + "&email=" + email + "&ip_address=" + (ipAddress ?? ""),
+                _apiBaseUrl + "/validate?api_key=" + _apiKey + "&email=" + email + "&ip_address=" + (ipAddress ?? ""),
                 successCallback,
                 failureCallback).Wait(); 
         }
@@ -73,7 +79,7 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
 
-            _sendRequest(ApiBaseUrl + "/getcredits?api_key=" + _apiKey,
+            _sendRequest(_apiBaseUrl + "/getcredits?api_key=" + _apiKey,
                 successCallback, failureCallback).Wait();
         }
 
@@ -87,7 +93,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                ApiBaseUrl + "/getapiusage?api_key=" + _apiKey
+                _apiBaseUrl + "/getapiusage?api_key=" + _apiKey
                 + "&start_date=" + startDate.ToString("yyyy-MM-dd")  
                 + "&end_date=" + endDate.ToString("yyyy-MM-dd"),
                 successCallback,
@@ -101,16 +107,154 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                ApiBaseUrl + "/activity?api_key=" + _apiKey
+                _apiBaseUrl + "/activity?api_key=" + _apiKey
                 + "&email=" + email,
                 successCallback,
                 failureCallback).Wait();
         }
 
         /// <param name="domain">The email domain for which to find the email format.</param>
+        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
+        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        public void FindEmailByDomain(
+            string domain, string firstName, string middleName, string lastName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindEmail(domain, null, firstName, middleName, lastName, successCallback, failureCallback);
+        }
+
+        /// <param name="domain">The email domain for which to find the email format.</param>
+        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        public void FindEmailByDomain(
+            string domain, string firstName, string lastName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindEmail(domain, null, firstName, null, lastName, successCallback, failureCallback);
+        }
+
+        /// <param name="domain">The email domain for which to find the email format.</param>
+        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        public void FindEmailByDomain(
+            string domain, string firstName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindEmail(domain, null, firstName, null, null, successCallback, failureCallback);
+        }
+
+        /// <param name="company_name">The company name for which to find the email format.</param>
+        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
+        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        public void FindEmailByCompanyName(
+            string companyName, string firstName, string middleName, string lastName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindEmail(null, companyName, firstName, middleName, lastName, successCallback, failureCallback);
+        }
+
+        /// <param name="company_name">The company name for which to find the email format.</param>
+        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        public void FindEmailByCompanyName(
+            string companyName, string firstName, string lastName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindEmail(null, companyName, firstName, null, lastName, successCallback, failureCallback);
+        }
+
+        /// <param name="company_name">The company name for which to find the email format.</param>
+        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        public void FindEmailByCompanyName(
+            string companyName, string firstName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindEmail(null, companyName, firstName, null, null, successCallback, failureCallback);
+        }
+
+        private void _FindEmail(
+            string domain, string companyName, string firstName, string middleName, string lastName,
+            Action<ZBEmailFinderResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            string url = _apiBaseUrl + "/guessformat?api_key=" + _apiKey;
+            if (domain != null) {
+                url += "&domain=" + (domain ?? "");
+            }
+            if (companyName != null) {
+                url += "&company_name=" + (companyName ?? "");
+            }
+            if (firstName != null) {
+                url += "&first_name=" + (firstName ?? "");
+            }
+            if (middleName != null) {
+                url += "&middle_name=" + (middleName ?? "");
+            }
+            if (lastName != null) {
+                url += "&last_name=" + (lastName ?? "");
+            }
+
+            _sendRequest(
+                url,
+                successCallback,
+                failureCallback).Wait();
+        }
+
+
+        /// <param name="domain">The email domain for which to find the email format.</param>
+        public void FindDomainByDomain(
+            string domain,
+            Action<ZBDomainSearchResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindDomain(domain, null, successCallback, failureCallback);
+        }
+
+        /// <param name="company_name">The company name for which to find the email format</param>
+        public void FindDomainByCompanyName(
+            string companyName,
+            Action<ZBDomainSearchResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            _FindDomain(null, companyName, successCallback, failureCallback);
+        }
+
+        private void _FindDomain(
+            string domain, string companyName,
+            Action<ZBDomainSearchResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            string url = _apiBaseUrl + "/guessformat?api_key=" + _apiKey;
+            if (domain != null) {
+                url += "&domain=" + (domain ?? "");
+            }
+            if (companyName != null) {
+                url += "&company_name=" + (companyName ?? "");
+            }
+
+            _sendRequest(
+                url,
+                successCallback,
+                failureCallback).Wait();
+        }
+
+
+        /// <param name="domain">The email domain for which to find the email format.</param>
         /// <param name="first_name">The first name of the person whose email format is being searched. [optional]</param>
         /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
         /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        [Obsolete("Use FindEmail() for Email Finder API, or FindDomain() for Domain Search API")]
         public void EmailFinder(
             string domain, string firstName, string middleName, string lastName,
             Action<ZBEmailFinderResponse> successCallback,
@@ -119,7 +263,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                ApiBaseUrl + "/guessformat?api_key=" + _apiKey
+                _apiBaseUrl + "/guessformat?api_key=" + _apiKey
                 + "&domain=" + (domain ?? "")
                 + "&first_name=" + (firstName ?? "")
                 + "&middle_name=" + (middleName ?? "")

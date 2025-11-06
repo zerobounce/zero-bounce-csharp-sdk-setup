@@ -10,9 +10,9 @@ Importe el SDK en su archivo:
 using ZeroBounceSDK;
 ``` 
 
-Inicialice el SDK con su clave de API:
+Inicialice el SDK con su clave de API y tu API preferida:
 ```c#
-ZeroBounce.Instance.Initialize("<SU_CLAVE_DE_API>");
+ZeroBounce.Instance.Initialize("<SU_CLAVE_DE_API>", ZBApiURL.ApiDefaultURL);
 ```
 
 #### Ejemplos
@@ -85,14 +85,27 @@ ZeroBounce.Instance.GetActivity(email,
     });
 ```
 
-* ##### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain.
-```c#
-var domain = "example.com";  // The email domain for which to find the email format.
-var firstName = "john";      // The first name of the person whose email format is being searched. [optional]
-var middleName = "";         // The middle name of the person whose email format is being searched. [optional]
-var lastName = "doe";        // The last name of the person whose email format is being searched. [optional]
+* ##### Utilice el punto final de la API Email Finder para identificar el formato de correo electrónico correcto cuando proporcione un nombre y un dominio de correo electrónico o el nombre de una empresa.
+```c###
+var domain = "example.com";  // El dominio de correo electrónico para el que se debe buscar el formato de correo electrónico.
+var companyName = "Example"; // El nombre de la empresa para la que se busca el formato de correo electrónico.
+var firstName = "john";      // El nombre de la persona cuyo formato de correo electrónico se está buscando. [optional]
+var middleName = "";         // El segundo nombre de la persona cuyo formato de correo electrónico se está buscando. [optional]
+var lastName = "doe";        // El apellido de la persona cuyo formato de correo electrónico se está buscando. [optional]
 
-ZeroBounce.Instance.EmailFinder(domain, firstName, middleName, lastName,
+ZeroBounce.Instance.FindEmailByDomain(domain, firstName, middleName, lastName,
+    response =>
+    {
+        Debug.WriteLine("EmailFinder success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("EmailFinder failure error " + error);
+        // ... your implementation
+    });
+
+ZeroBounce.Instance.FindEmailByCompanyName(companyName, firstName, middleName, lastName,
     response =>
     {
         Debug.WriteLine("EmailFinder success response " + response);
@@ -104,6 +117,37 @@ ZeroBounce.Instance.EmailFinder(domain, firstName, middleName, lastName,
         // ... your implementation
     });
 ```
+
+* ##### Utilice el punto final de la API de búsqueda de dominios para identificar el dominio de correo electrónico cuando proporcione un dominio o nombre de empresa.
+```c###
+var domain = "example.com";  // El dominio de correo electrónico para el que se debe buscar el formato de correo electrónico.
+var companyName = "Example"; // El nombre de la empresa para la que se busca el formato de correo electrónico.
+
+ZeroBounce.Instance.FindDomainByDomain(domain,
+    response =>
+    {
+        Debug.WriteLine("DomainSearch success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("DomainSearch failure error " + error);
+        // ... your implementation
+    });
+
+ZeroBounce.Instance.FindDomainByCompanyName(companyName,
+    response =>
+    {
+        Debug.WriteLine("DomainSearch success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("DomainSearch failure error " + error);
+        // ... your implementation
+    });
+```
+
 
 * ##### El API sendfile permite al usuario enviar un archivo para validación masiva de correo electrónico
 ```c#

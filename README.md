@@ -14,9 +14,9 @@ Import the sdk in your file:
 using ZeroBounceSDK;
 ``` 
 
-Initialize the sdk with your api key:
+Initialize the wrapper with your api key and preferred api:
 ```c# 
-ZeroBounce.Instance.Initialize("<YOUR_API_KEY>");
+ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", ZBApiURL.ApiDefaultURL);
 ```
 
 ## Examples
@@ -111,14 +111,15 @@ ZeroBounce.Instance.GetActivity(email,
     });
 ```
 
-* ##### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain.
+* ##### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain or company name.
 ```c###
 var domain = "example.com";  // The email domain for which to find the email format.
-var firstName = "john";      // The first name of the person whose email format is being searched. [optional]
+var companyName = "Example"; // The company name for which to find the email format.
+var firstName = "john";      // The first name of the person whose email format is being searched.
 var middleName = "";         // The middle name of the person whose email format is being searched. [optional]
 var lastName = "doe";        // The last name of the person whose email format is being searched. [optional]
 
-ZeroBounce.Instance.EmailFinder(domain, firstName, middleName, lastName,
+ZeroBounce.Instance.FindEmailByDomain(domain, firstName, middleName, lastName,
     response =>
     {
         Debug.WriteLine("EmailFinder success response " + response);
@@ -127,6 +128,48 @@ ZeroBounce.Instance.EmailFinder(domain, firstName, middleName, lastName,
     error =>
     {
         Debug.WriteLine("EmailFinder failure error " + error);
+        // ... your implementation
+    });
+
+ZeroBounce.Instance.FindEmailByCompanyName(companyName, firstName, middleName, lastName,
+    response =>
+    {
+        Debug.WriteLine("EmailFinder success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("EmailFinder failure error " + error);
+        // ... your implementation
+    });
+```
+
+* ##### Use the Domain Search API endpoint to identify the email domain when you provide a domain or company name.
+```c###
+var domain = "example.com";  // The email domain for which to find the email format.
+var companyName = "Example"; // The company name for which to find the email format.
+
+ZeroBounce.Instance.FindDomainByDomain(domain,
+    response =>
+    {
+        Debug.WriteLine("DomainSearch success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("DomainSearch failure error " + error);
+        // ... your implementation
+    });
+
+ZeroBounce.Instance.FindDomainByCompanyName(companyName,
+    response =>
+    {
+        Debug.WriteLine("DomainSearch success response " + response);
+        // ... your implementation
+    },
+    error =>
+    {
+        Debug.WriteLine("DomainSearch failure error " + error);
         // ... your implementation
     });
 ```

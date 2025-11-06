@@ -313,14 +313,36 @@ public class Tests
     }
 
     [Test]
-    public void EmailFinder()
+    public void FindEmail()
     {
         ZeroBounceTest.Instance.MockResponse(@"{
             ""email"": ""john.doe@example.com"",
+            ""email_confidence"": ""MEDIUM"",
             ""domain"": ""example.com"",
+            ""company_name"": """",
+            ""did_you_mean"": """",
+            ""failure_reason"": """"
+        }");
+
+        ZeroBounceTest.Instance.FindEmailByDomain("example.com", "john", "", "doe",
+            response =>
+            {
+                Assert.That(response.Email, Is.EqualTo("john.doe@example.com"));
+            },
+            error =>
+            {
+                Assert.Fail(error);
+            }
+        );
+    }
+
+    [Test]
+    public void FindDomain()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""domain"": ""example.com"",
+            ""company_name"": """",
             ""format"": ""first.last"",
-            ""status"": ""valid"",
-            ""sub_status"": """",
             ""confidence"": ""HIGH"",
             ""did_you_mean"": """",
             ""failure_reason"": """",
@@ -336,10 +358,9 @@ public class Tests
             ]
         }");
 
-        ZeroBounceTest.Instance.EmailFinder("example.com", "john", "", "doe",
+        ZeroBounceTest.Instance.FindDomainByDomain("example.com",
             response =>
             {
-                Assert.That(response.Email, Is.EqualTo("john.doe@example.com"));
                 Assert.That(response.OtherDomainFormats[1].Format, Is.EqualTo("first"));
             },
             error =>

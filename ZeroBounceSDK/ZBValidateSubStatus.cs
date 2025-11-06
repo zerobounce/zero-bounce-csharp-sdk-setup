@@ -28,7 +28,8 @@ namespace ZeroBounceSDK
         AliasAddress,
         RoleBasedCatchAll,
         Disposable,
-        Toxic
+        Toxic,
+        AcceptAll
     }
     
     public sealed class ZBValidateSubStatusConverter : JsonConverter {
@@ -88,6 +89,8 @@ namespace ZeroBounceSDK
                     return ZBValidateSubStatus.Disposable;
                 case "toxic":
                     return ZBValidateSubStatus.Toxic;
+                case "accept_all":
+                    return ZBValidateSubStatus.AcceptAll;
                 
                 default:
                     return ZBValidateSubStatus.None;
@@ -166,6 +169,9 @@ namespace ZeroBounceSDK
                     break;
                 case ZBValidateSubStatus.Toxic:
                     writer.WriteValue("toxic");
+                    break;
+                case ZBValidateSubStatus.AcceptAll:
+                    writer.WriteValue("accept_all");
                     break;
                
                 case ZBValidateSubStatus.None:
