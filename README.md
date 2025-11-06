@@ -334,3 +334,20 @@ ZeroBounce.Instance.ScoringDeleteFile(fileId,
         // ...your implementation
     });
 ```
+
+## DEVELOPMENT
+
+### Test
+```bash
+dotnet test
+```
+
+### Build
+```bash
+dotnet build
+```
+
+### Publish
+```bash
+
+```
