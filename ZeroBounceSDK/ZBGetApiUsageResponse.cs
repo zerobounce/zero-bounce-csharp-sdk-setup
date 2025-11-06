@@ -117,6 +117,10 @@ namespace ZeroBounceSDK
         [JsonProperty("sub_status_failed_smtp_connection")]
         public int SubStatusFailedSmtpConnection;
 
+        /// Total number of times the API has a sub status of "accept_all"
+        [JsonProperty("sub_status_accept_all")]
+        public int SubStatusAcceptAll;
+
         /// Start date of query
         [JsonConverter(typeof(CustomDateTimeConverter))]
         [JsonProperty("start_date")] public DateTime StartDate;
@@ -156,6 +160,7 @@ namespace ZeroBounceSDK
                    ", subStatusMailboxQuotaExceeded=" + SubStatusMailboxQuotaExceeded +
                    ", subStatusForcibleDisconnect=" + SubStatusForcibleDisconnect +
                    ", subStatusFailedSmtpConnection=" + SubStatusFailedSmtpConnection +
+                   ", subStatusAcceptAll=" + SubStatusAcceptAll +
                    ", startDate='" + StartDate + '\'' +
                    ", endDate='" + EndDate + '\'' +
                    '}';
