@@ -19,6 +19,13 @@ Initialize the wrapper with your api key and preferred api:
 ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", ZBApiURL.ApiDefaultURL);
 ```
 
+You can also use a custom base URL (e.g. for testing). Trailing slashes are removed automatically:
+```c#
+ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", "https://api.zerobounce.net/v2");
+```
+
+**Note:** `Initialize` throws `ZBClientException` if the API key is null or whitespace. Other client-side validations (e.g. empty `email_batch`, empty `file_id`, or using both `domain` and `company_name` together in Email Finder/Domain Search) are reported via the failure callback.
+
 ## Examples
 Then you can use any of the SDK methods, for example:
 * ##### Validate an email address

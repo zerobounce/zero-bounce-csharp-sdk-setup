@@ -120,7 +120,7 @@ public class Tests
         ZeroBounceTest.Instance.MockResponse(@"""Email Address"",""ZeroBounceQualityScore""
             ""disposable@example.com"",""0""
             ""invalid@example.com"",""10""
-            ""valid@example.com"",""10""");
+            ""valid@example.com"",""10""", "text/csv");
 
         ZeroBounceTest.Instance.ScoringGetFile("fae8b155-da88-45fb-8058-0ccfad168812", "email_list.txt",
             response =>
@@ -435,11 +435,11 @@ public class Tests
     [Test]
     public void GetFile()
     {
-        ZeroBounceTest.Instance.MockResponse(@"""Email Address"",""ZB Status"",""ZB Sub Status"",""ZB Account"",""ZB Domain"",""ZB First Name"",""ZB Last Name"",""ZB Gender"",""ZB Free Email"",""ZB MX Found"",""ZB MX Record"",""ZB SMTP Provider"",""ZB Did You Mean""
-            ""disposable@example.com"",""do_not_mail"",""disposable"","""","""",""zero"",""bounce"",""male"",""False"",""true"",""mx.example.com"",""example"",""""
-            ""invalid@example.com"",""invalid"",""mailbox_not_found"","""","""",""zero"",""bounce"",""male"",""False"",""true"",""mx.example.com"",""example"",""""
-            ""valid@example.com"",""valid"","""","""","""",""zero"",""bounce"",""male"",""False"",""true"",""mx.example.com"",""example"",""""");
-
+        var getFileCsvContent = "\"Email Address\",\"ZB Status\",\"ZB Sub Status\",\"ZB Account\",\"ZB Domain\",\"ZB First Name\",\"ZB Last Name\",\"ZB Gender\",\"ZB Free Email\",\"ZB MX Found\",\"ZB MX Record\",\"ZB SMTP Provider\",\"ZB Did You Mean\"\n"
+            + "\"disposable@example.com\",\"do_not_mail\",\"disposable\",\"\",\"\",\"zero\",\"bounce\",\"male\",\"False\",\"true\",\"mx.example.com\",\"example\",\"\"\n"
+            + "\"invalid@example.com\",\"invalid\",\"mailbox_not_found\",\"\",\"\",\"zero\",\"bounce\",\"male\",\"False\",\"true\",\"mx.example.com\",\"example\",\"\"\n"
+            + "\"valid@example.com\",\"valid\",\"\",\"\",\"\",\"zero\",\"bounce\",\"male\",\"False\",\"true\",\"mx.example.com\",\"example\",\"\"";
+        ZeroBounceTest.Instance.MockResponse(getFileCsvContent, "text/csv");
         ZeroBounceTest.Instance.GetFile("fae8b155-da88-45fb-8058-0ccfad168812", "email_list.txt",
             response =>
             {

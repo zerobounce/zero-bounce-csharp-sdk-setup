@@ -1,4 +1,4 @@
-﻿using ZeroBounceSDK;
+using ZeroBounceSDK;
 using Moq;
 using Moq.Protected;
 using System.Net;
@@ -18,10 +18,13 @@ class ZeroBounceTest : ZeroBounce
 
     public void MockResponse(string response)
     {
+        MockResponse(response, "application/json");
+    }
 
+    public void MockResponse(string response, string contentType)
+    {
         var mockHttpMessageHandler = new Mock<HttpMessageHandler>();
 
-        // Setup Protected method on HttpMessageHandler mock.
         mockHttpMessageHandler.Protected()
             .Setup<Task<HttpResponseMessage>>(
                 "SendAsync",
@@ -34,7 +37,7 @@ class ZeroBounceTest : ZeroBounce
                 {
                     Content = new StringContent(response)
                 };
-                httpResponse.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                httpResponse.Content.Headers.ContentType = new MediaTypeHeaderValue(contentType);
 
                 return httpResponse;
             });

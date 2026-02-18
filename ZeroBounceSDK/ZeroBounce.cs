@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -28,15 +28,40 @@ namespace ZeroBounceSDK
         private string _apiKey;
         private string _apiBaseUrl = ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL);
 
+        /// <summary>
+        /// Initialize the SDK with your API key. Uses default API base URL.
+        /// </summary>
+        /// <exception cref="ZBClientException">Thrown when apiKey is null or whitespace.</exception>
         public void Initialize(string apiKey)
         {
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new ZBClientException("Empty parameter: api_key");
             _apiKey = apiKey;
         }
 
+        /// <summary>
+        /// Initialize the SDK with your API key and a predefined API base URL.
+        /// </summary>
+        /// <exception cref="ZBClientException">Thrown when apiKey is null or whitespace.</exception>
         public void Initialize(string apiKey, ZBApiURL apiBaseUrl)
         {
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new ZBClientException("Empty parameter: api_key");
             _apiKey = apiKey;
             _apiBaseUrl = ZBApiURLConverter.GetApiURLString(apiBaseUrl);
+        }
+
+        /// <summary>
+        /// Initialize the SDK with your API key and a custom API base URL (e.g. for testing).
+        /// Trailing slashes are removed from the base URL.
+        /// </summary>
+        /// <exception cref="ZBClientException">Thrown when apiKey is null or whitespace.</exception>
+        public void Initialize(string apiKey, string baseUrl)
+        {
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new ZBClientException("Empty parameter: api_key");
+            _apiKey = apiKey;
+            _apiBaseUrl = baseUrl == null ? ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL) : baseUrl.TrimEnd('/');
         }
 
         /// <param name="email">The email address you want to validate</param>
@@ -61,6 +86,19 @@ namespace ZeroBounceSDK
             Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (emailBatch == null || emailBatch.Count == 0)
+            {
+                failureCallback("Empty parameter: email_batch");
+                return;
+            }
+            foreach (var row in emailBatch)
+            {
+                if (row == null || string.IsNullOrWhiteSpace(row.EmailAddress))
+                {
+                    failureCallback("Empty parameter: email_address");
+                    return;
+                }
+            }
 
             var requestData = new ZBValidateEmailRequest { ApiKey = _apiKey, EmailBatch = emailBatch };
             var json = JsonConvert.SerializeObject(requestData);
@@ -185,6 +223,16 @@ namespace ZeroBounceSDK
             Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (string.IsNullOrWhiteSpace(domain) && string.IsNullOrWhiteSpace(companyName))
+            {
+                failureCallback("Empty parameter: domain or company_name required");
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(domain) && !string.IsNullOrWhiteSpace(companyName))
+            {
+                failureCallback("Parameter error: domain and company_name cannot be used together");
+                return;
+            }
 
             string url = _apiBaseUrl + "/guessformat?api_key=" + _apiKey;
             if (domain != null) {
@@ -234,6 +282,16 @@ namespace ZeroBounceSDK
             Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (string.IsNullOrWhiteSpace(domain) && string.IsNullOrWhiteSpace(companyName))
+            {
+                failureCallback("Empty parameter: domain xor company_name required");
+                return;
+            }
+            if (!string.IsNullOrWhiteSpace(domain) && !string.IsNullOrWhiteSpace(companyName))
+            {
+                failureCallback("Parameter error: domain and company_name cannot be used together");
+                return;
+            }
 
             string url = _apiBaseUrl + "/guessformat?api_key=" + _apiKey;
             if (domain != null) {
@@ -294,6 +352,11 @@ namespace ZeroBounceSDK
             Action<ZBFileStatusResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (string.IsNullOrWhiteSpace(fileId))
+            {
+                failureCallback("Empty parameter: file_id");
+                return;
+            }
 
             _sendRequest(
                 BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/filestatus?api_key=" + _apiKey + "&file_id=" + fileId,
@@ -406,20 +469,46 @@ namespace ZeroBounceSDK
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (string.IsNullOrWhiteSpace(fileId))
+            {
+                failureCallback("Empty parameter: file_id");
+                return;
+            }
 
             try
             {
                 var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/getfile?api_key=" + _apiKey + "&file_id=" + fileId;
-                var stream = await _client.GetStreamAsync(url);
-               
+                var response = await _client.GetAsync(url);
+                var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
+
+                if (contentType.Contains("application/json"))
+                {
+                    var responseString = await response.Content.ReadAsStringAsync();
+                    var jsonResponse = JsonConvert.DeserializeObject<ZBGetFileResponse>(responseString);
+                    var isError = jsonResponse != null &&
+                        (!jsonResponse.Success ||
+                         !string.IsNullOrEmpty(jsonResponse.Message) ||
+                         !string.IsNullOrEmpty(jsonResponse.Error));
+                    if (isError)
+                    {
+                        failureCallback(
+                            jsonResponse.Message ?? jsonResponse.Error ?? "Request not processed successfully.");
+                        return;
+                    }
+                    successCallback(jsonResponse ?? new ZBGetFileResponse());
+                    return;
+                }
+
                 var dirPath = Path.GetDirectoryName(localDownloadPath);
-                if(dirPath != null & dirPath != "") Directory.CreateDirectory(dirPath);
-                var fileStream = new FileStream(localDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096,
-                    true);
-                await stream.CopyToAsync(fileStream);
-                fileStream.Close();
+                if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
+                using (var stream = await response.Content.ReadAsStreamAsync())
+                using (var fileStream = new FileStream(localDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
+                {
+                    await stream.CopyToAsync(fileStream);
+                }
                 successCallback(new ZBGetFileResponse
                 {
+                    Success = true,
                     LocalFilePath = Path.GetFullPath(localDownloadPath)
                 });
             }
@@ -447,6 +536,11 @@ namespace ZeroBounceSDK
 
         private void _DeleteFile(bool scoring, string fileId, Action<ZBDeleteFileResponse> successCallback, Action<string> failureCallback) {
             if (InvalidApiKey(failureCallback)) return;
+            if (string.IsNullOrWhiteSpace(fileId))
+            {
+                failureCallback("Empty parameter: file_id");
+                return;
+            }
 
             _sendRequest(
                 BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/deletefile?api_key=" + _apiKey + "&file_id=" + fileId,
