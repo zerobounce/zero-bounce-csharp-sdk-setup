@@ -15,7 +15,7 @@ namespace ZeroBounceSDK
         FailedSmtpConnection,
         MailboxQuotaExceeded,
         ExceptionOccurred,
-        PossibleTraps,
+        PossibleTrap,
         RoleBased,
         GlobalSuppression,
         MailboxNotFound,
@@ -29,7 +29,13 @@ namespace ZeroBounceSDK
         RoleBasedCatchAll,
         Disposable,
         Toxic,
-        AcceptAll
+        Alternate,
+        MxForward,
+        Blocked,
+        Allowed,
+        AcceptAll,
+        RoleBasedAcceptAll,
+        Gold
     }
     
     public sealed class ZBValidateSubStatusConverter : JsonConverter {
@@ -61,8 +67,9 @@ namespace ZeroBounceSDK
                     return ZBValidateSubStatus.MailboxQuotaExceeded;
                 case "exception_occurred":
                     return ZBValidateSubStatus.ExceptionOccurred;
+                case "possible_trap":
                 case "possible_traps":
-                    return ZBValidateSubStatus.PossibleTraps;
+                    return ZBValidateSubStatus.PossibleTrap;
                 case "role_based":
                     return ZBValidateSubStatus.RoleBased;
                 case "global_suppression":
@@ -91,7 +98,19 @@ namespace ZeroBounceSDK
                     return ZBValidateSubStatus.Toxic;
                 case "accept_all":
                     return ZBValidateSubStatus.AcceptAll;
-                
+                case "alternate":
+                    return ZBValidateSubStatus.Alternate;
+                case "mx_forward":
+                    return ZBValidateSubStatus.MxForward;
+                case "blocked":
+                    return ZBValidateSubStatus.Blocked;
+                case "allowed":
+                    return ZBValidateSubStatus.Allowed;
+                case "role_based_accept_all":
+                    return ZBValidateSubStatus.RoleBasedAcceptAll;
+                case "gold":
+                    return ZBValidateSubStatus.Gold;
+
                 default:
                     return ZBValidateSubStatus.None;
             }
@@ -128,8 +147,8 @@ namespace ZeroBounceSDK
                 case ZBValidateSubStatus.ExceptionOccurred:
                     writer.WriteValue("exception_occurred");
                     break;
-                case ZBValidateSubStatus.PossibleTraps:
-                    writer.WriteValue("possible_traps");
+                case ZBValidateSubStatus.PossibleTrap:
+                    writer.WriteValue("possible_trap");
                     break;
                 case ZBValidateSubStatus.RoleBased:
                     writer.WriteValue("role_based");
@@ -173,7 +192,25 @@ namespace ZeroBounceSDK
                 case ZBValidateSubStatus.AcceptAll:
                     writer.WriteValue("accept_all");
                     break;
-               
+                case ZBValidateSubStatus.Alternate:
+                    writer.WriteValue("alternate");
+                    break;
+                case ZBValidateSubStatus.MxForward:
+                    writer.WriteValue("mx_forward");
+                    break;
+                case ZBValidateSubStatus.Blocked:
+                    writer.WriteValue("blocked");
+                    break;
+                case ZBValidateSubStatus.Allowed:
+                    writer.WriteValue("allowed");
+                    break;
+                case ZBValidateSubStatus.RoleBasedAcceptAll:
+                    writer.WriteValue("role_based_accept_all");
+                    break;
+                case ZBValidateSubStatus.Gold:
+                    writer.WriteValue("gold");
+                    break;
+
                 case ZBValidateSubStatus.None:
                 default:
                     writer.WriteValue("none");

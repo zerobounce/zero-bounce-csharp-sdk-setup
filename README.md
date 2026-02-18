@@ -26,6 +26,13 @@ ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", "https://api.zerobounce.net/v2"
 
 **Note:** `Initialize` throws `ZBClientException` if the API key is null or whitespace. Other client-side validations (e.g. empty `email_batch`, empty `file_id`, or using both `domain` and `company_name` together in Email Finder/Domain Search) are reported via the failure callback.
 
+### Response types and enums
+- **ZBConfidence** – Used in Email Finder and Domain Search for confidence levels: `High`, `Medium`, `Low`, `Unknown`, `Undetermined`. Exposed on `ZBEmailFinderResponse.EmailConfidence`, `ZBDomainSearchResponse.Confidence`, and `ZBDomainFormat.Confidence`.
+- **ZBValidateStatus** / **ZBValidateSubStatus** – Validation result status and sub-status. Used on `ZBValidateResponse` and on each `ZBValidateBatchResponseRow` in batch validate responses. See the API docs for allowed values.
+- **ZBGetApiUsageResponse** – Includes per-status and per–sub-status counts (e.g. `SubStatusMxForward`, `SubStatusAlternate`, `SubStatusAllowed`, `SubStatusBlocked`, `SubStatusGold`).
+- **ZBFileStatusResponse** – Includes `ErrorReason` for file processing errors when present.
+- **ZBGetFileResponse** – When the API returns JSON (e.g. file not ready), the SDK uses `Success`, `Message`, and `Error` and invokes the failure callback with the error message.
+
 ## Examples
 Then you can use any of the SDK methods, for example:
 * ##### Validate an email address

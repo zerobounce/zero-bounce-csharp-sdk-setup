@@ -10,8 +10,9 @@ namespace ZeroBounceSDK
         //The resulting email address identified by the API.
         [JsonProperty("email")] public string Email;
 
-        //The level of confidence we have that the email exists. Possible values: HIGH, MEDIUM, LOW.
-        [JsonProperty("email_confidence")] public string EmailConfidence;
+        //The level of confidence we have that the email exists. Possible values: high, medium, low, unknown, undetermined.
+        [JsonProperty("email_confidence")] [JsonConverter(typeof(ZBConfidenceConverter))]
+        public ZBConfidence EmailConfidence { get; set; }
 
         //The provided domain name.
         [JsonProperty("domain")] public string Domain;

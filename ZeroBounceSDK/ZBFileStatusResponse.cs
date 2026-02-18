@@ -11,6 +11,7 @@ namespace ZeroBounceSDK
         [JsonProperty("file_name")] public string FileName;
         [JsonProperty("upload_date")] public string UploadDate;
         [JsonProperty("complete_percentage")] public string CompletePercentage;
+        [JsonProperty("error_reason")] public string ErrorReason;
         [JsonProperty("return_url")] public string ReturnUrl;
 
         public override string ToString()
@@ -23,6 +24,7 @@ namespace ZeroBounceSDK
                    ", fileName='" + FileName + "'" +
                    ", uploadDate='" + UploadDate + "'" +
                    ", completePercentage='" + CompletePercentage + "'" +
+                   ", errorReason='" + ErrorReason + "'" +
                    ", returnUrl='" + ReturnUrl + "'" +
                    '}';
         }

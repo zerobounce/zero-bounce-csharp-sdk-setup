@@ -121,6 +121,26 @@ namespace ZeroBounceSDK
         [JsonProperty("sub_status_accept_all")]
         public int SubStatusAcceptAll;
 
+        /// Total number of times the API has a sub status of "mx_forward"
+        [JsonProperty("sub_status_mx_forward")]
+        public int SubStatusMxForward;
+
+        /// Total number of times the API has a sub status of "alternate"
+        [JsonProperty("sub_status_alternate")]
+        public int SubStatusAlternate;
+
+        /// Total number of times the API has a sub status of "allowed"
+        [JsonProperty("sub_status_allowed")]
+        public int SubStatusAllowed;
+
+        /// Total number of times the API has a sub status of "blocked"
+        [JsonProperty("sub_status_blocked")]
+        public int SubStatusBlocked;
+
+        /// Total number of times the API has a sub status of "gold"
+        [JsonProperty("sub_status_gold")]
+        public int SubStatusGold;
+
         /// Start date of query
         [JsonConverter(typeof(CustomDateTimeConverter))]
         [JsonProperty("start_date")] public DateTime StartDate;
@@ -161,6 +181,11 @@ namespace ZeroBounceSDK
                    ", subStatusForcibleDisconnect=" + SubStatusForcibleDisconnect +
                    ", subStatusFailedSmtpConnection=" + SubStatusFailedSmtpConnection +
                    ", subStatusAcceptAll=" + SubStatusAcceptAll +
+                   ", subStatusMxForward=" + SubStatusMxForward +
+                   ", subStatusAlternate=" + SubStatusAlternate +
+                   ", subStatusAllowed=" + SubStatusAllowed +
+                   ", subStatusBlocked=" + SubStatusBlocked +
+                   ", subStatusGold=" + SubStatusGold +
                    ", startDate='" + StartDate + '\'' +
                    ", endDate='" + EndDate + '\'' +
                    '}';

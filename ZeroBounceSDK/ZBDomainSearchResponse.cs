@@ -16,8 +16,9 @@ namespace ZeroBounceSDK
         //The format of the resulting email address.
         [JsonProperty("format")] public string Format;
 
-        //The level of confidence we have in the provided format based on our engine and database. Possible values: LOW, MEDIUM, HIGH, UNKNOWN.
-        [JsonProperty("confidence")] public string Confidence;
+        //The level of confidence we have in the provided format. Possible values: high, medium, low, unknown, undetermined.
+        [JsonProperty("confidence")] [JsonConverter(typeof(ZBConfidenceConverter))]
+        public ZBConfidence Confidence { get; set; }
 
         //e.g. a suggestion in case case a firstname is used in the lastname field
         [JsonProperty("did_you_mean")] public string DidYouMean;

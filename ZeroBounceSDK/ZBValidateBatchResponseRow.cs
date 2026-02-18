@@ -1,14 +1,16 @@
-﻿using Newtonsoft.Json;
+using Newtonsoft.Json;
 
 namespace ZeroBounceSDK
 {
     public class ZBValidateBatchResponseRow
     {
-        [JsonProperty("address")]  public string Address { get; set; }
+        [JsonProperty("address")] public string Address { get; set; }
 
-        [JsonProperty("status")] public string Status { get; set; }
+        [JsonProperty("status")] [JsonConverter(typeof(ZBValidateStatusConverter))]
+        public ZBValidateStatus Status { get; set; }
 
-        [JsonProperty("sub_status")] public string SubStatus { get; set; }
+        [JsonProperty("sub_status")] [JsonConverter(typeof(ZBValidateSubStatusConverter))]
+        public ZBValidateSubStatus SubStatus { get; set; }
 
         [JsonProperty("free_email")] public bool FreeEmail { get; set; }
 
