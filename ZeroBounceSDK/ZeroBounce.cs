@@ -384,7 +384,29 @@ namespace ZeroBounceSDK
         public void ScoringSendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(true, filePath, options, successCallback, failureCallback).Wait();
+            try
+            {
+                var fileName = Path.GetFileName(filePath);
+                using (var file = File.OpenRead(filePath))
+                {
+                    _SendFile(true, file, fileName, options, successCallback, failureCallback).Wait();
+                }
+            }
+            catch (Exception e)
+            {
+                failureCallback(e.Message);
+            }
+        }
+
+        /// <summary>
+        /// The scoringSendfile API allows user to send a file for bulk email validation (from a stream).
+        /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
+        /// </summary>
+        public void ScoringSendFile(Stream file, string fileName, SendFileOptions options,
+            Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _SendFile(true, file, fileName, options, successCallback, failureCallback).Wait();
         }
 
         /// <summary>
@@ -395,10 +417,32 @@ namespace ZeroBounceSDK
         public void SendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(false, filePath, options, successCallback, failureCallback).Wait();
+            try
+            {
+                var fileName = Path.GetFileName(filePath);
+                using (var file = File.OpenRead(filePath))
+                {
+                    _SendFile(false, file, fileName, options, successCallback, failureCallback).Wait();
+                }
+            }
+            catch (Exception e)
+            {
+                failureCallback(e.Message);
+            }
         }
 
-        private async Task _SendFile(bool scoring, string filePath, SendFileOptions options,
+        /// <summary>
+        /// The sendfile API allows user to send a file for bulk email validation (from a stream).
+        /// <param name="successCallback"> The success callback function, called with a ZBSendFileResponse object</param>
+        /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
+        /// </summary>
+        public void SendFile(Stream file, string fileName, SendFileOptions options,
+            Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _SendFile(false, file, fileName, options, successCallback, failureCallback).Wait();
+        }
+
+        private async Task _SendFile(bool scoring, Stream file, string fileName, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
@@ -406,8 +450,7 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new MultipartFormDataContent();
-                var file = File.OpenRead(filePath);
-                content.Add(new StreamContent(file), "file", Path.GetFileName(filePath));
+                content.Add(new StreamContent(file), "file", fileName);
 
                 content.Add(new StringContent(_apiKey), "api_key");
 
@@ -434,7 +477,6 @@ namespace ZeroBounceSDK
                 var result = await _client.PostAsync(url, content);
                 var responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
-                file.Close();
                 successCallback(response);
             }
             catch (Exception e)
