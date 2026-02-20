@@ -1,20 +1,20 @@
 ## Zero Bounce C# SDK
-This SDK contains methods for interacting easily with ZeroBounce API.
-More information about ZeroBounce you can find in the [official documentation](https://www.zerobounce.net/docs/).
+This SDK contains methods for interacting easily with the ZeroBounce API.
+More information about ZeroBounce can be found in the [official documentation](https://www.zerobounce.net/docs/).
 
 ## INSTALLATION
-You can install by searching for ZeroBounceSDK in NuGet package manager browser or just use the this command:
+You can install by searching for `ZeroBounce.SDK` in the NuGet Package Manager, or run:
 ```bash
 Install-Package ZeroBounce.SDK
 ```
 
 ## USAGE
-Import the sdk in your file:
+Import the SDK:
 ```c#
 using ZeroBounceSDK;
 ``` 
 
-Initialize the wrapper with your api key and preferred api:
+Initialize the wrapper with your API key and preferred API base URL:
 ```c# 
 ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", ZBApiURL.ApiDefaultURL);
 ```
@@ -34,7 +34,7 @@ ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", "https://api.zerobounce.net/v2"
 - **ZBGetFileResponse** – When the API returns JSON (e.g. file not ready), the SDK uses `Success`, `Message`, and `Error` and invokes the failure callback with the error message.
 
 ## Examples
-Then you can use any of the SDK methods, for example:
+You can now use any of the SDK methods, for example:
 * ##### Validate an email address
 ```c#
 var email = "<EMAIL_ADDRESS>";   // The email address you want to validate
@@ -92,8 +92,8 @@ ZeroBounce.Instance.GetCredits(
 
 * ##### Check your API usage for a given period of time
 ```c#
-var startDate = new DateTime();    // The start date of when you want to view API usage
-var endDate = new DateTime();      // The end date of when you want to view API usage
+var startDate = new DateTime(2024, 01, 01); // Start date (yyyy-MM-dd)
+var endDate = new DateTime(2024, 01, 31);   // End date (yyyy-MM-dd)
 
 ZeroBounce.Instance.GetApiUsage(startDate, endDate,
     response =>
@@ -108,7 +108,7 @@ ZeroBounce.Instance.GetApiUsage(startDate, endDate,
     });
 ```
 
-* ##### Use the Activity API endpoint to gather insights into your subscribers'overall email engagement
+* ##### Use the Activity API endpoint to gather insights into your subscribers' overall email engagement
 ```c#
 var email = "valid@example.com";    // Subscriber email address
 
@@ -126,7 +126,7 @@ ZeroBounce.Instance.GetActivity(email,
 ```
 
 * ##### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain or company name.
-```c###
+```c#
 var domain = "example.com";  // The email domain for which to find the email format.
 var companyName = "Example"; // The company name for which to find the email format.
 var firstName = "john";      // The first name of the person whose email format is being searched.
@@ -159,7 +159,7 @@ ZeroBounce.Instance.FindEmailByCompanyName(companyName, firstName, middleName, l
 ```
 
 * ##### Use the Domain Search API endpoint to identify the email domain when you provide a domain or company name.
-```c###
+```c#
 var domain = "example.com";  // The email domain for which to find the email format.
 var companyName = "Example"; // The company name for which to find the email format.
 
@@ -188,7 +188,7 @@ ZeroBounce.Instance.FindDomainByCompanyName(companyName,
     });
 ```
 
-* ##### The sendfile API allows user to send a file for bulk email validation
+* ##### The `SendFile` endpoint allows you to submit a file for bulk email validation
 ```c#
 var filePath = "<FILE_PATH>"; // The csv or txt file
 var options = new SendFileOptions();
@@ -217,7 +217,7 @@ ZeroBounce.Instance.SendFile(
     });
 ```
 
-* ##### The getfile API allows users to get the validation results file for the file been submitted using sendfile API
+* ##### The `GetFile` endpoint downloads the validation results for a file submitted via `SendFile`
 ```c#
 var fileId = "<FILE_ID>";                       // The returned file ID when calling sendfile API
 var localDownloadPath = "<FILE_DOWNLOAD_PATH>"; // The location where the downloaded file will be saved
@@ -235,7 +235,7 @@ ZeroBounce.Instance.GetFile(fileId, localDownloadPath,
     });
 ```
 
-* ##### Check the status of a file uploaded via "sendFile" method
+* ##### Check the status of a file uploaded via `SendFile`
 ```c#
 var fileId = "<FILE_ID>";                       // The returned file ID when calling sendfile API
 
@@ -252,7 +252,7 @@ ZeroBounce.Instance.FileStatus(fileId,
     });
 ```
 
-* ##### Deletes the file that was submitted using scoring sendfile API. File can be deleted only when its status is _`Complete`_
+* ##### Deletes a file submitted via `SendFile`. File can be deleted only when its status is _`Complete`_
 ```c#
 var fileId = "<FILE_ID>";                       // The returned file ID when calling sendfile API
 
@@ -271,7 +271,7 @@ ZeroBounce.Instance.DeleteFile(fileId,
 
 ### AI Scoring API
 
-* ##### The scoringSendfile API allows user to send a file for bulk email validation
+* ##### The `ScoringSendFile` endpoint allows you to submit a file for bulk AI scoring
 ```c#
 var filePath = "<FILE_PATH>"; // The csv or txt file
 
@@ -297,7 +297,7 @@ ZeroBounce.Instance.ScoringSendFile(
     });
 ```
 
-* ##### The scoringGetFile API allows users to get the validation results file for the file been submitted using scoringSendfile API
+* ##### The `ScoringGetFile` endpoint downloads the results for a file submitted via `ScoringSendFile`
 ```c#
 var fileId = "<FILE_ID>";                       // The returned file ID when calling scoringSendfile API
 var localDownloadPath = "<FILE_DOWNLOAD_PATH>"; // The location where the downloaded file will be saved
@@ -315,7 +315,7 @@ ZeroBounce.Instance.ScoringGetFile(fileId, localDownloadPath,
     });
 ```
 
-* ##### Check the status of a file uploaded via "scoringSendFile" method
+* ##### Check the status of a file uploaded via `ScoringSendFile`
 ```c#
 var fileId = "<FILE_ID>";                       // The returned file ID when calling scoringSendfile API
 
@@ -332,7 +332,7 @@ ZeroBounce.Instance.ScoringFileStatus(fileId,
     });
 ```
 
-* ##### Deletes the file that was submitted using scoring scoringSendfile API. File can be deleted only when its status is _`Complete`_
+* ##### Deletes a file submitted via `ScoringSendFile`. File can be deleted only when its status is _`Complete`_
 ```c#
 var fileId = "<FILE_ID>";                       // The returned file ID when calling scoringSendfile API
 
@@ -364,4 +364,25 @@ dotnet build
 ### Publish
 ```bash
 
+# This repo uses SDK-style packing from ZeroBounceSDK/ZeroBounceSDK.csproj.
+# (The legacy .nuspec file in ZeroBounceSDK/ is not used for publishing.)
+
+# 1) Bump the version
+# Update both <Version> and <PackageVersion> in ZeroBounceSDK/ZeroBounceSDK.csproj
+
+# 2) Run tests (recommended)
+dotnet test
+
+# 3) Create the NuGet package
+dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release
+# Output: ZeroBounceSDK/bin/Release/ZeroBounce.SDK.<version>.nupkg
+
+# 4) Push to nuget.org
+# Create a NuGet API key in nuget.org, then:
+export NUGET_API_KEY="YOUR_KEY_HERE"
+dotnet nuget push "ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg" \
+  --api-key "$NUGET_API_KEY" \
+  --source "https://api.nuget.org/v3/index.json"
+
+# Optional: add --skip-duplicate to avoid failing if the version already exists.
 ```
