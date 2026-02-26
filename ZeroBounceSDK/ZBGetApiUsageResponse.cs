@@ -141,6 +141,10 @@ namespace ZeroBounceSDK
         [JsonProperty("sub_status_gold")]
         public int SubStatusGold;
 
+        /// Total number of times the API has a sub status of "role_based_accept_all"
+        [JsonProperty("sub_status_role_based_accept_all")]
+        public int SubStatusRoleBasedAcceptAll;
+
         /// Start date of query
         [JsonConverter(typeof(CustomDateTimeConverter))]
         [JsonProperty("start_date")] public DateTime StartDate;
@@ -186,6 +190,7 @@ namespace ZeroBounceSDK
                    ", subStatusAllowed=" + SubStatusAllowed +
                    ", subStatusBlocked=" + SubStatusBlocked +
                    ", subStatusGold=" + SubStatusGold +
+                   ", subStatusRoleBasedAcceptAll=" + SubStatusRoleBasedAcceptAll +
                    ", startDate='" + StartDate + '\'' +
                    ", endDate='" + EndDate + '\'' +
                    '}';

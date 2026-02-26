@@ -351,7 +351,15 @@ ZeroBounce.Instance.ScoringDeleteFile(fileId,
 
 ## DEVELOPMENT
 
-### Test
+### Run tests with Docker
+From the **parent repository root** (the folder that contains all SDKs and `docker-compose.yml`):
+
+```bash
+docker compose build csharp
+docker compose run --rm csharp
+```
+
+### Test (local)
 ```bash
 dotnet test
 ```

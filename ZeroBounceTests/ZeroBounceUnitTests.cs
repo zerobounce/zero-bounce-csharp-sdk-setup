@@ -37,7 +37,8 @@ public class Tests
         ZeroBounceTest.Instance.MockResponse(@"{
             ""total"": 10,
             ""start_date"": ""3/15/2023"",
-            ""end_date"": ""3/23/2023""
+            ""end_date"": ""3/23/2023"",
+            ""sub_status_role_based_accept_all"": 0
         }");
 
         ZeroBounceTest.Instance.GetApiUsage(DateTime.Now.AddDays(-7), DateTime.Now,
