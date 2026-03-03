@@ -369,28 +369,6 @@ dotnet test
 dotnet build
 ```
 
-### Publish
-```bash
+## Publish
 
-# This repo uses SDK-style packing from ZeroBounceSDK/ZeroBounceSDK.csproj.
-# (The legacy .nuspec file in ZeroBounceSDK/ is not used for publishing.)
-
-# 1) Bump the version
-# Update both <Version> and <PackageVersion> in ZeroBounceSDK/ZeroBounceSDK.csproj
-
-# 2) Run tests (recommended)
-dotnet test
-
-# 3) Create the NuGet package
-dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release
-# Output: ZeroBounceSDK/bin/Release/ZeroBounce.SDK.<version>.nupkg
-
-# 4) Push to nuget.org
-# Create a NuGet API key in nuget.org, then:
-export NUGET_API_KEY="YOUR_KEY_HERE"
-dotnet nuget push "ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg" \
-  --api-key "$NUGET_API_KEY" \
-  --source "https://api.nuget.org/v3/index.json"
-
-# Optional: add --skip-duplicate to avoid failing if the version already exists.
-```
+See the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide in the SDKs repo for version bump, pack, and `dotnet nuget push` steps.
