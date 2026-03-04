@@ -5,7 +5,8 @@ WORKDIR /app
 
 COPY . .
 
-RUN dotnet restore
+# Restore SDK + Tests only (ZeroBounceSample is .NET Framework WPF; dotnet restore would skip it with NU1503)
+RUN dotnet restore ZeroBounceTests/ZeroBounceTests.csproj
 
 # Run unit tests (coverage optional)
 CMD ["dotnet", "test", "ZeroBounceTests/ZeroBounceTests.csproj", "--no-restore", "-v", "normal"]

@@ -371,4 +371,21 @@ dotnet build
 
 ## Publish
 
-See the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide in the SDKs repo for version bump, pack, and `dotnet nuget push` steps.
+**Prerequisites:** NuGet API key from https://www.nuget.org/account/apikeys  
+If the .NET SDK is not installed, the script uses Docker (requires the repo to be inside the SDKs monorepo with `docker-compose.yml` at the parent directory).
+
+```bash
+export NUGET_API_KEY=your_api_key
+./scripts/publish-nuget.sh              # publish current checkout
+./scripts/publish-nuget.sh --last-tag   # checkout latest git tag and publish it
+```
+
+Or run manually:
+```bash
+dotnet restore && dotnet build -c Release && dotnet test --no-build -c Release
+dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
+dotnet nuget push ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg \
+  --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
+```
+
+For version bump and more detail, see the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide.
