@@ -491,7 +491,7 @@ public class Tests
     [Test]
     public void GetFile_WithOptions_IncludesDownloadTypeAndActivityDataInRequestUri()
     {
-        Uri capturedUri = null;
+        Uri? capturedUri = null;
         var mockHandler = new Mock<HttpMessageHandler>();
         mockHandler.Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -526,7 +526,7 @@ public class Tests
                 Assert.Fail);
 
             Assert.That(capturedUri, Is.Not.Null);
-            var q = capturedUri.Query;
+            var q = capturedUri!.Query;
             Assert.That(q, Does.Contain("download_type=combined"));
             Assert.That(q, Does.Contain("activity_data=true"));
             Assert.That(q, Does.Contain("file_id=abc-id"));
@@ -563,7 +563,7 @@ public class Tests
     [Test]
     public void ScoringGetFile_WithOptions_DoesNotAppendActivityData()
     {
-        Uri capturedUri = null;
+        Uri? capturedUri = null;
         var mockHandler = new Mock<HttpMessageHandler>();
         mockHandler.Protected()
             .Setup<Task<HttpResponseMessage>>(
@@ -598,7 +598,7 @@ public class Tests
                 Assert.Fail);
 
             Assert.That(capturedUri, Is.Not.Null);
-            Assert.That(capturedUri.Query, Does.Contain("download_type=phase_2"));
+            Assert.That(capturedUri!.Query, Does.Contain("download_type=phase_2"));
             Assert.That(capturedUri.Query, Does.Not.Contain("activity_data"));
         }
         finally
