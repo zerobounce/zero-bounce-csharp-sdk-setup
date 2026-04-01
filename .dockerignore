@@ -4,3 +4,23 @@
 **/.vs/
 **/.idea/
 *.user
+
+# NuGet — restored inside the image
+**/packages/
+*.nupkg
+*.snupkg
+
+# Test & coverage output
+**/TestResults/
+**/coverage*/
+*.trx
+*.coverage
+*.coveragexml
+
+# Logs & temp
+**/*.log
+**/BenchmarkDotNet.Artifacts/
+
+# Docs not required for `dotnet test`
+*.md
+!README.md
