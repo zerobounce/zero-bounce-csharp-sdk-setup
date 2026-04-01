@@ -30,8 +30,9 @@ ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", "https://api.zerobounce.net/v2"
 - **ZBConfidence** – Used in Email Finder and Domain Search for confidence levels: `High`, `Medium`, `Low`, `Unknown`, `Undetermined`. Exposed on `ZBEmailFinderResponse.EmailConfidence`, `ZBDomainSearchResponse.Confidence`, and `ZBDomainFormat.Confidence`.
 - **ZBValidateStatus** / **ZBValidateSubStatus** – Validation result status and sub-status. Used on `ZBValidateResponse` and on each `ZBValidateBatchResponseRow` in batch validate responses. See the API docs for allowed values.
 - **ZBGetApiUsageResponse** – Includes per-status and per–sub-status counts (e.g. `SubStatusMxForward`, `SubStatusAlternate`, `SubStatusAllowed`, `SubStatusBlocked`, `SubStatusGold`).
-- **ZBFileStatusResponse** – Includes `ErrorReason` for file processing errors when present.
-- **ZBGetFileResponse** – When the API returns JSON (e.g. file not ready), the SDK uses `Success`, `Message`, and `Error` and invokes the failure callback with the error message.
+- **ZBFileStatusResponse** – Includes `ErrorReason` for file processing errors when present, and `FilePhase2Status` (`file_phase_2_status`) when the bulk API returns it (e.g. after optional phase 2 processing).
+- **ZBDownloadType** – `Phase1`, `Phase2`, or `Combined` for bulk `getfile` `download_type` (validation and scoring).
+- **ZBGetFileResponse** – When the API returns JSON (e.g. file not ready or an error with HTTP 200), the SDK treats `Success`, `Message`, `ErrorMessage`, and `Error` as error signals and invokes the failure callback with the first non-empty message.
 
 ## Examples
 You can now use any of the SDK methods, for example:
@@ -201,6 +202,8 @@ options.GenderColumn = 6;               // The index of "gender" column in the f
 options.IpAddressColumn = 7;            // The index of "IP address" column in the file
 options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
 options.RemoveDuplicate = false;        // If you want the system to remove duplicate emails (true or false, default is true). Please note that if we remove more than 50% of the lines because of duplicates (parameter is true), system will return a 400 bad request error as a safety net to let you know that more than 50% of the file has been modified.
+// Optional: request catch-all (phase 2) after phase 1 when Verify+ rules apply — see [v2 send file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-send-file)
+options.AllowPhase2 = true;
 
 ZeroBounce.Instance.SendFile(
     filePath,
@@ -216,6 +219,8 @@ ZeroBounce.Instance.SendFile(
         // ... your implementation
     });
 ```
+
+Bulk validation uses `https://bulkapi.zerobounce.net/v2`. See [v2 send file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-send-file), [v2 file status](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-file-status), and [v2 get file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-get-file).
 
 * ##### The `GetFile` endpoint downloads the validation results for a file submitted via `SendFile`
 ```c#
@@ -234,6 +239,30 @@ ZeroBounce.Instance.GetFile(fileId, localDownloadPath,
         // ... your implementation
     });
 ```
+
+Optional query parameters (validation `getfile` only for `ActivityData`; scoring `ScoringGetFile` ignores `ActivityData`):
+
+```c#
+ZeroBounce.Instance.GetFile(
+    fileId,
+    localDownloadPath,
+    new ZeroBounce.GetFileOptions
+    {
+        DownloadType = ZBDownloadType.Combined,  // phase_1 | phase_2 | combined — see v2 get file docs
+        ActivityData = true                      // optional; [activity data](https://www.zerobounce.net/docs/activity-data)
+    },
+    response => { /* ... */ },
+    error => { /* ... */ });
+
+ZeroBounce.Instance.ScoringGetFile(
+    fileId,
+    localDownloadPath,
+    new ZeroBounce.GetFileOptions { DownloadType = ZBDownloadType.Phase2 },
+    response => { /* ... */ },
+    error => { /* ... */ });
+```
+
+`phase_2` / `combined` downloads apply when phase 2 was enabled for the file and `file_phase_2_status` is `Complete`. JSON error bodies may still use HTTP 200; the SDK surfaces them via the failure callback.
 
 * ##### Check the status of a file uploaded via `SendFile`
 ```c#
@@ -280,7 +309,7 @@ var options = new SendFileOptions();
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
 options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
 options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
-
+// options.AllowPhase2 is not sent for scoring sendfile (validation bulk only).
 
 ZeroBounce.Instance.ScoringSendFile(
     filePath,

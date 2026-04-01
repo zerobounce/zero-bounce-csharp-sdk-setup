@@ -374,6 +374,20 @@ namespace ZeroBounceSDK
             public int IpAddressColumn;
             public bool HasHeaderRow;
             public bool RemoveDuplicate;
+            /// <summary>
+            /// When set, sent as multipart <c>allow_phase_2</c> (validation bulk only). See API sendfile docs.
+            /// </summary>
+            public bool? AllowPhase2;
+        }
+
+        /// <summary>
+        /// Optional query parameters for bulk <c>getfile</c> (validation overload with <c>GetFileOptions</c>).
+        /// <see cref="ActivityData"/> applies to validation bulk only; ignored for scoring getfile.
+        /// </summary>
+        public class GetFileOptions
+        {
+            public ZBDownloadType? DownloadType { get; set; }
+            public bool? ActivityData { get; set; }
         }
         
         /// <summary>
@@ -471,6 +485,8 @@ namespace ZeroBounceSDK
                         content.Add(new StringContent("true"), "has_header_row");
                     if (options.RemoveDuplicate)
                         content.Add(new StringContent("true"), "remove_duplicate");
+                    if (!scoring && options.AllowPhase2.HasValue)
+                        content.Add(new StringContent(options.AllowPhase2.Value ? "true" : "false"), "allow_phase_2");
                 }
 
                 var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendfile";
@@ -493,7 +509,16 @@ namespace ZeroBounceSDK
         public void ScoringGetFile(string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(true, fileId, localDownloadPath, successCallback, failureCallback).Wait();
+            _GetFile(true, fileId, localDownloadPath, null, successCallback, failureCallback).Wait();
+        }
+
+        /// <summary>
+        /// Scoring getfile with optional <see cref="GetFileOptions.DownloadType"/> (<c>activity_data</c> is ignored).
+        /// </summary>
+        public void ScoringGetFile(string fileId, string localDownloadPath, GetFileOptions getFileOptions,
+            Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _GetFile(true, fileId, localDownloadPath, getFileOptions, successCallback, failureCallback).Wait();
         }
         
         /// <summary>
@@ -504,10 +529,41 @@ namespace ZeroBounceSDK
         public void GetFile(string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(false, fileId, localDownloadPath, successCallback, failureCallback).Wait();
+            _GetFile(false, fileId, localDownloadPath, null, successCallback, failureCallback).Wait();
         }
 
-        private async Task _GetFile(bool scoring, string fileId, string localDownloadPath, 
+        /// <summary>
+        /// Validation getfile with optional <c>download_type</c> and <c>activity_data</c> query parameters.
+        /// </summary>
+        public void GetFile(string fileId, string localDownloadPath, GetFileOptions getFileOptions,
+            Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
+        {
+            _GetFile(false, fileId, localDownloadPath, getFileOptions, successCallback, failureCallback).Wait();
+        }
+
+        private static string DownloadTypeToQueryValue(ZBDownloadType t)
+        {
+            switch (t)
+            {
+                case ZBDownloadType.Phase1: return "phase_1";
+                case ZBDownloadType.Phase2: return "phase_2";
+                case ZBDownloadType.Combined: return "combined";
+                default: throw new ArgumentOutOfRangeException(nameof(t), t, null);
+            }
+        }
+
+        private static string BuildGetFileUrl(string bulkBase, bool scoring, string apiKey, string fileId, GetFileOptions options)
+        {
+            var url = bulkBase + (scoring ? "/scoring" : "") + "/getfile?api_key=" + apiKey + "&file_id=" + fileId;
+            if (options == null) return url;
+            if (options.DownloadType.HasValue)
+                url += "&download_type=" + DownloadTypeToQueryValue(options.DownloadType.Value);
+            if (!scoring && options.ActivityData.HasValue)
+                url += "&activity_data=" + (options.ActivityData.Value ? "true" : "false");
+            return url;
+        }
+
+        private async Task _GetFile(bool scoring, string fileId, string localDownloadPath, GetFileOptions getFileOptions,
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
@@ -519,7 +575,7 @@ namespace ZeroBounceSDK
 
             try
             {
-                var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/getfile?api_key=" + _apiKey + "&file_id=" + fileId;
+                var url = BuildGetFileUrl(BulkApiBaseUrl, scoring, _apiKey, fileId, getFileOptions);
                 var response = await _client.GetAsync(url);
                 var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
 
@@ -530,14 +586,27 @@ namespace ZeroBounceSDK
                     var isError = jsonResponse != null &&
                         (!jsonResponse.Success ||
                          !string.IsNullOrEmpty(jsonResponse.Message) ||
-                         !string.IsNullOrEmpty(jsonResponse.Error));
+                         !string.IsNullOrEmpty(jsonResponse.Error) ||
+                         !string.IsNullOrEmpty(jsonResponse.ErrorMessage));
                     if (isError)
                     {
                         failureCallback(
-                            jsonResponse.Message ?? jsonResponse.Error ?? "Request not processed successfully.");
+                            jsonResponse.Message
+                            ?? jsonResponse.ErrorMessage
+                            ?? jsonResponse.Error
+                            ?? "Request not processed successfully.");
                         return;
                     }
                     successCallback(jsonResponse ?? new ZBGetFileResponse());
+                    return;
+                }
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errBody = await response.Content.ReadAsStringAsync();
+                    failureCallback(string.IsNullOrWhiteSpace(errBody)
+                        ? ((int)response.StatusCode).ToString()
+                        : errBody);
                     return;
                 }
 

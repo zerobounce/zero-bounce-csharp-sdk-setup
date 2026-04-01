@@ -1,4 +1,12 @@
 using System.Globalization;
+using System.IO;
+using System.Net;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Threading;
+using System.Threading.Tasks;
+using Moq;
+using Moq.Protected;
 using ZeroBounceSDK;
 
 namespace ZeroBounceTests;
@@ -9,6 +17,7 @@ public class Tests
     [SetUp]
     public void Setup()
     {
+        ZeroBounceTest.Instance.ResetHttpClient();
         ZeroBounceTest.Instance.Initialize("dummykey");
     }
 
@@ -415,6 +424,7 @@ public class Tests
             ""file_name"": ""email_list.txt"",
             ""upload_date"": ""2023-03-24T14:18:31Z"",
             ""file_status"": ""Complete"",
+            ""file_phase_2_status"": ""N/A"",
             ""complete_percentage"": ""100% Complete."",
             ""return_url"": ""returnUrl""
         }");
@@ -425,6 +435,7 @@ public class Tests
                 //TestContext.WriteLine("success response " + response);
                 Assert.That(response.Success, Is.EqualTo(true));
                 Assert.That(response.FileName, Is.EqualTo("email_list.txt"));
+                Assert.That(response.FilePhase2Status, Is.EqualTo("N/A"));
             },
             error =>
             {
@@ -475,5 +486,125 @@ public class Tests
                 Assert.Fail(error);
             }
         );
+    }
+
+    [Test]
+    public void GetFile_WithOptions_IncludesDownloadTypeAndActivityDataInRequestUri()
+    {
+        Uri capturedUri = null;
+        var mockHandler = new Mock<HttpMessageHandler>();
+        mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage req, CancellationToken _) =>
+            {
+                capturedUri = req.RequestUri;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("a,b")
+                    {
+                        Headers = { ContentType = new MediaTypeHeaderValue("text/csv") }
+                    }
+                };
+            });
+
+        ZeroBounceTest.Instance.SetHttpClient(new HttpClient(mockHandler.Object));
+        var path = Path.Combine(Path.GetTempPath(), "zb_csharp_getfile_opts.csv");
+        try
+        {
+            ZeroBounceTest.Instance.GetFile(
+                "abc-id",
+                path,
+                new ZeroBounce.GetFileOptions
+                {
+                    DownloadType = ZBDownloadType.Combined,
+                    ActivityData = true
+                },
+                _ => { },
+                Assert.Fail);
+
+            Assert.That(capturedUri, Is.Not.Null);
+            var q = capturedUri.Query;
+            Assert.That(q, Does.Contain("download_type=combined"));
+            Assert.That(q, Does.Contain("activity_data=true"));
+            Assert.That(q, Does.Contain("file_id=abc-id"));
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void GetFile_JsonErrorWithHttp200_InvokesFailureCallback()
+    {
+        ZeroBounceTest.Instance.MockResponse(
+            "{\"success\":false,\"message\":\"Phase 2 download types are only available when phase 2 is enabled for this file.\"}",
+            "application/json");
+
+        var failed = false;
+        ZeroBounceTest.Instance.GetFile(
+            "fae8b155-da88-45fb-8058-0ccfad168812",
+            "ignored.csv",
+            new ZeroBounce.GetFileOptions { DownloadType = ZBDownloadType.Combined },
+            _ => Assert.Fail("expected failure"),
+            err =>
+            {
+                failed = true;
+                Assert.That(err, Does.Contain("Phase 2"));
+            });
+
+        Assert.That(failed, Is.True);
+    }
+
+    [Test]
+    public void ScoringGetFile_WithOptions_DoesNotAppendActivityData()
+    {
+        Uri capturedUri = null;
+        var mockHandler = new Mock<HttpMessageHandler>();
+        mockHandler.Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>())
+            .ReturnsAsync((HttpRequestMessage req, CancellationToken _) =>
+            {
+                capturedUri = req.RequestUri;
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("x")
+                    {
+                        Headers = { ContentType = new MediaTypeHeaderValue("text/csv") }
+                    }
+                };
+            });
+
+        ZeroBounceTest.Instance.SetHttpClient(new HttpClient(mockHandler.Object));
+        var path = Path.Combine(Path.GetTempPath(), "zb_scoring_getfile.csv");
+        try
+        {
+            ZeroBounceTest.Instance.ScoringGetFile(
+                "id-1",
+                path,
+                new ZeroBounce.GetFileOptions
+                {
+                    DownloadType = ZBDownloadType.Phase2,
+                    ActivityData = true
+                },
+                _ => { },
+                Assert.Fail);
+
+            Assert.That(capturedUri, Is.Not.Null);
+            Assert.That(capturedUri.Query, Does.Contain("download_type=phase_2"));
+            Assert.That(capturedUri.Query, Does.Not.Contain("activity_data"));
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
     }
 }

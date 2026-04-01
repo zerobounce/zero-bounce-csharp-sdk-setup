@@ -13,7 +13,15 @@ class ZeroBounceTest : ZeroBounce
 
     public void SetHttpClient(HttpClient client)
     {
+        _client?.Dispose();
         _client = client;
+    }
+
+    /// <summary>Restores a real <see cref="HttpClient"/> so mocked tests do not leak handlers.</summary>
+    public void ResetHttpClient()
+    {
+        _client?.Dispose();
+        _client = new HttpClient();
     }
 
     public void MockResponse(string response)

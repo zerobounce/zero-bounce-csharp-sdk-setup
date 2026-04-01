@@ -10,6 +10,9 @@ namespace ZeroBounceSDK
         [JsonProperty("message")]
         public string Message { get; set; }
 
+        [JsonProperty("error_message")]
+        public string ErrorMessage { get; set; }
+
         [JsonProperty("error")]
         public string Error { get; set; }
 

@@ -183,6 +183,8 @@ options.GenderColumn = 6;               // The index of "gender" column in the f
 options.IpAddressColumn = 7;            // The index of "IP address" column in the file
 options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
 options.RemoveDuplicate = false;        // If you want the system to remove duplicate emails (true or false, default is true). Please note that if we remove more than 50% of the lines because of duplicates (parameter is true), system will return a 400 bad request error as a safety net to let you know that more than 50% of the file has been modified.
+// Optional phase 2 (catch-all) after phase 1 — [v2 send file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-send-file)
+options.AllowPhase2 = true;
 
 ZeroBounce.Instance.SendFile(
     filePath,
@@ -198,6 +200,8 @@ ZeroBounce.Instance.SendFile(
         // ... your implementation
     });
 ```
+
+Bulk validation uses `https://bulkapi.zerobounce.net/v2`. See [v2 send file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-send-file), [v2 file status](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-file-status), and [v2 get file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-get-file).
 
 * ##### The getfile API allows users to get the validation results file for the file been submitted using sendfile API
 ```c#
@@ -215,6 +219,21 @@ ZeroBounce.Instance.GetFile(fileId, localDownloadPath,
         Debug.WriteLine("GetFile failure error " + error);
         // ... your implementation
     });
+```
+
+Optional `download_type` and `activity_data` (validation only for `activity_data`):
+
+```c#
+ZeroBounce.Instance.GetFile(
+    fileId,
+    localDownloadPath,
+    new ZeroBounce.GetFileOptions
+    {
+        DownloadType = ZBDownloadType.Combined,
+        ActivityData = true
+    },
+    response => { /* ... */ },
+    error => { /* ... */ });
 ```
 
 * ##### Check the status of a file uploaded via "sendFile" method
@@ -262,7 +281,7 @@ var options = new SendFileOptions();
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
 options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
 options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
-
+// AllowPhase2 is not used for scoring sendfile.
 
 ZeroBounce.Instance.ScoringSendFile(
     filePath,
@@ -295,6 +314,15 @@ ZeroBounce.Instance.ScoringGetFile(fileId, localDownloadPath,
         Debug.WriteLine("GetFile failure error " + error);
         // ... your implementation
     });
+```
+
+```c#
+ZeroBounce.Instance.ScoringGetFile(
+    fileId,
+    localDownloadPath,
+    new ZeroBounce.GetFileOptions { DownloadType = ZBDownloadType.Phase2 },
+    response => { /* ... */ },
+    error => { /* ... */ });
 ```
 
 * ##### Check the status of a file uploaded via "scoringSendFile" method

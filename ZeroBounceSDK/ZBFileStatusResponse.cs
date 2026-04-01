@@ -7,6 +7,7 @@ namespace ZeroBounceSDK
         [JsonProperty("success")] public bool Success;
         [JsonProperty("message")] public string Message;
         [JsonProperty("file_status")] public string FileStatus;
+        [JsonProperty("file_phase_2_status")] public string FilePhase2Status;
         [JsonProperty("file_id")] public string FileId;
         [JsonProperty("file_name")] public string FileName;
         [JsonProperty("upload_date")] public string UploadDate;
@@ -20,6 +21,7 @@ namespace ZeroBounceSDK
                    "success=" + Success +
                    ", message='" + Message + "'" +
                    ", fileStatus='" + FileStatus + "'" +
+                   ", filePhase2Status='" + FilePhase2Status + "'" +
                    ", fileId='" + FileId + "'" +
                    ", fileName='" + FileName + "'" +
                    ", uploadDate='" + UploadDate + "'" +
