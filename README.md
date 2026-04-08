@@ -381,34 +381,28 @@ ZeroBounce.Instance.ScoringDeleteFile(fileId,
 ## DEVELOPMENT
 
 ### Run tests with Docker
-**From this directory** (no monorepo needed):
 
-```bash
-docker build -t zerobounce-csharp-sdk:test .
-docker run --rm zerobounce-csharp-sdk:test
-```
-
-From the **parent SDKs folder** (where `docker-compose.yml` lives):
+**Preferred:** from the **parent SDKs folder** (where `docker-compose.yml` lives); the C# tree is mounted into the container so you always test your working copy:
 
 ```bash
 docker compose build csharp
 docker compose run --rm csharp
 ```
 
-### Test (local)
+**From this directory only** (no `docker-compose.yml`): build the toolchain image, then mount this folder at `/app`:
+
 ```bash
-dotnet test
+docker build -t zerobounce-csharp-sdk:tool .
+docker run --rm -v "$(pwd)":/app -w /app zerobounce-csharp-sdk:tool
 ```
 
-### Build
-```bash
-dotnet build
-```
+### Test / build (local .NET SDK)
+
+If you have the .NET SDK installed locally, you can still use `dotnet test` / `dotnet build`; **NuGet publish is Docker-only** — use the script below.
 
 ## Publish
 
-**Prerequisites:** NuGet API key from https://www.nuget.org/account/apikeys  
-If the .NET SDK is not installed, the script uses Docker (requires the repo to be inside the SDKs monorepo with `docker-compose.yml` at the parent directory).
+**Always use Docker** for publishing (pinned SDK, same as the documented workflow). Requires this repo inside the SDKs monorepo and a NuGet API key from https://www.nuget.org/account/apikeys.
 
 ```bash
 export NUGET_API_KEY=your_api_key
@@ -416,12 +410,4 @@ export NUGET_API_KEY=your_api_key
 ./scripts/publish-nuget.sh --last-tag   # checkout latest git tag and publish it
 ```
 
-Or run manually:
-```bash
-dotnet restore && dotnet build -c Release && dotnet test --no-build -c Release
-dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
-dotnet nuget push ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg \
-  --api-key $NUGET_API_KEY --source https://api.nuget.org/v3/index.json
-```
-
-For version bump and more detail, see the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide.
+For manual `docker compose` steps and version bumps, see the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide.
