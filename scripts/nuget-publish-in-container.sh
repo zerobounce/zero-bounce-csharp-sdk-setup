@@ -11,9 +11,12 @@ fi
 dotnet restore ZeroBounceTests/ZeroBounceTests.csproj
 dotnet build ZeroBounceTests/ZeroBounceTests.csproj -c Release
 dotnet test ZeroBounceTests/ZeroBounceTests.csproj --no-build -c Release
+# Drop stale packages so we never push an old version when multiple .nupkg exist in Release.
+rm -f ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg
 dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
 
-NUPKG=$(ls ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg 2>/dev/null | head -1)
+# Prefer newest by mtime (the pack we just produced), not lexicographic `ls` order.
+NUPKG=$(ls -t ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg 2>/dev/null | head -1)
 if [ -z "$NUPKG" ] || [ ! -f "$NUPKG" ]; then
   echo "Error: No .nupkg found under ZeroBounceSDK/bin/Release/"
   exit 1
