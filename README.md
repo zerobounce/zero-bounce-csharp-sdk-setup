@@ -398,11 +398,23 @@ docker run --rm -v "$(pwd)":/app -w /app zerobounce-csharp-sdk:tool
 
 ### Test / build (local .NET SDK)
 
-If you have the .NET SDK installed locally, you can still use `dotnet test` / `dotnet build`; **NuGet publish is Docker-only** — use the script below.
+If you have the .NET SDK installed locally, you can still use `dotnet test` / `dotnet build`.
 
 ## Publish
 
-**Always use Docker** for publishing (pinned SDK, same as the documented workflow). Requires this repo inside the SDKs monorepo and a NuGet API key from https://www.nuget.org/account/apikeys.
+Publishing to NuGet uses **GitHub Actions trusted publishing** (OIDC) — no `NUGET_API_KEY` secret. See [sdk-docs (NuGet)](../sdk-docs/nuget/) and [Microsoft docs](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing).
+
+1. Bump `PackageVersion` / `Version` in `ZeroBounceSDK/ZeroBounceSDK.csproj`, commit, tag (e.g. `v2.1.4`), and push the tag.
+2. Ensure a GitHub environment named **`release`** exists (must match the NuGet trusted publishing policy).
+3. **Actions → Publish → Run workflow** and enter the tag, or:
+
+```bash
+gh workflow run publish.yml -f tag=v2.1.4
+```
+
+### Local Docker (optional)
+
+If you prefer the pinned Docker toolchain (same steps as CI, no host .NET SDK required):
 
 ```bash
 export NUGET_API_KEY=your_api_key
@@ -410,4 +422,4 @@ export NUGET_API_KEY=your_api_key
 ./scripts/publish-nuget.sh --last-tag   # checkout latest git tag and publish it
 ```
 
-For manual `docker compose` steps and version bumps, see the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide.
+For manual `docker compose` steps, see the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide.

@@ -1,0 +1,116 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        type: string
+        description: Tag to publish (e.g. v2.1.4)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate-tag:
+    name: Validate tag
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag exists
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if [ -z "$TAG" ]; then
+            echo "Error: Tag is required."
+            exit 1
+          fi
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Error: Tag '$TAG' does not exist."
+            exit 1
+          fi
+          echo "Publishing tag: $TAG"
+
+  publish:
+    name: Test, pack and publish to NuGet
+    needs: [validate-tag]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag }}
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        run: dotnet restore ZeroBounceTests/ZeroBounceTests.csproj
+
+      - name: Build
+        run: dotnet build ZeroBounceTests/ZeroBounceTests.csproj -c Release --no-restore
+
+      - name: Test
+        run: dotnet test ZeroBounceTests/ZeroBounceTests.csproj --no-build -c Release
+
+      - name: Pack
+        run: |
+          rm -f ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg
+          dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
+
+      - name: NuGet login (trusted publishing)
+        uses: NuGet/login@v1
+        id: login
+        with:
+          user: ZeroBounceIntegrations
+
+      - name: Push to NuGet
+        run: |
+          NUPKG=$(ls -t ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg 2>/dev/null | head -1)
+          if [ -z "$NUPKG" ] || [ ! -f "$NUPKG" ]; then
+            echo "Error: No .nupkg found under ZeroBounceSDK/bin/Release/"
+            exit 1
+          fi
+          echo "Pushing $NUPKG to NuGet..."
+          dotnet nuget push "$NUPKG" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+  release:
+    name: Create GitHub Release
+    needs: [publish]
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.tag }}
+          fetch-depth: 0
+
+      - name: Create release if missing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.event.inputs.tag }}"
+          if gh release view "$TAG" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release $TAG already exists, skipping."
+          else
+            gh release create "$TAG" \
+              --repo "${{ github.repository }}" \
+              --title "$TAG" \
+              --generate-notes
+          fi
