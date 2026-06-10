@@ -72,7 +72,7 @@ jobs:
         uses: NuGet/login@v1
         id: login
         with:
-          user: ${{ secrets.NUGET_USER || 'ZeroBounceIntegrations' }}
+          user: ${{ secrets.NUGET_USER || 'ZeroBounceAPI' }}
 
       - name: Push to NuGet
         env:
