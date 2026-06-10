@@ -402,7 +402,11 @@ If you have the .NET SDK installed locally, you can still use `dotnet test` / `d
 
 ## Publish
 
-Publishing to NuGet uses **GitHub Actions trusted publishing** (OIDC) — no `NUGET_API_KEY` secret. See [sdk-docs (NuGet)](../sdk-docs/nuget/) and [Microsoft docs](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing).
+Publishing to NuGet uses **GitHub Actions trusted publishing** (OIDC). See [sdk-docs (NuGet)](../sdk-docs/nuget/) and [Microsoft docs](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing).
+
+**Trusted publishing owner must own the package.** [ZeroBounce.SDK](https://www.nuget.org/packages/ZeroBounce.SDK/) is owned by **ZeroBounceAPI** on nuget.org. If your policy owner is **ZeroBounceIntegrations**, sign in as ZeroBounceAPI → package **Manage package owners** → add **ZeroBounceIntegrations** (or create the policy under ZeroBounceAPI and set GitHub secret `NUGET_USER` to `ZeroBounceAPI`).
+
+Optional fallback: add repo secret **`NUGET_API_KEY`** (Push scope for `ZeroBounce.SDK` from the owning account).
 
 1. Bump `PackageVersion` / `Version` in `ZeroBounceSDK/ZeroBounceSDK.csproj`, commit, tag (e.g. `v2.1.4`), and push the tag.
 2. Ensure a GitHub environment named **`release`** exists (must match the NuGet trusted publishing policy).

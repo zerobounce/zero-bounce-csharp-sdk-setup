@@ -69,13 +69,20 @@ jobs:
           dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
 
       - name: NuGet login (trusted publishing)
+        if: ${{ secrets.NUGET_API_KEY == '' }}
         uses: NuGet/login@v1
         id: login
         with:
-          user: ZeroBounceIntegrations
+          user: ${{ secrets.NUGET_USER || 'ZeroBounceIntegrations' }}
 
       - name: Push to NuGet
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY || steps.login.outputs.NUGET_API_KEY }}
         run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "Error: No NuGet API key. Configure trusted publishing (NuGet/login) or add NUGET_API_KEY secret."
+            exit 1
+          fi
           NUPKG=$(ls -t ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg 2>/dev/null | head -1)
           if [ -z "$NUPKG" ] || [ ! -f "$NUPKG" ]; then
             echo "Error: No .nupkg found under ZeroBounceSDK/bin/Release/"
@@ -83,7 +90,7 @@ jobs:
           fi
           echo "Pushing $NUPKG to NuGet..."
           dotnet nuget push "$NUPKG" \
-            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --api-key "$NUGET_API_KEY" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
