@@ -40,6 +40,9 @@ namespace ZeroBounceSDK
         //The SMTP Provider of the email or [null] [BETA].
         [JsonProperty("smtp_provider")] public string SmtpProvider;
 
+        //[true/false or null] Is the domain name a catch-all (the domain email server responds with valid to any SMTP checks and emailing to an invalid might not bounce)?
+        [JsonProperty("catchall_domain")] public bool? CatchallDomain;
+
         //The first name of the owner of the email when available or [null].
         [JsonProperty("firstname")] public string FirstName;
 
@@ -80,6 +83,7 @@ namespace ZeroBounceSDK
                    ", mxFound=" + MxFound +
                    ", mxRecord='" + MxRecord + '\'' +
                    ", smtpProvider='" + SmtpProvider + '\'' +
+                   ", catchallDomain=" + CatchallDomain +
                    ", firstName='" + FirstName + '\'' +
                    ", lastName='" + LastName + '\'' +
                    ", gender='" + Gender + '\'' +

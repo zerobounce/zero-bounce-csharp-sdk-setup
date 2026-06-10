@@ -24,6 +24,8 @@ namespace ZeroBounceSDK
 
         [JsonProperty("smtp_provider")] public string SmtpProvider { get; set; }
 
+        [JsonProperty("catchall_domain")] public bool? CatchallDomain { get; set; }
+
         [JsonProperty("mx_found")] public string MxFound { get; set; }
 
         [JsonProperty("mx_record")] public string MxRecord { get; set; }
