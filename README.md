@@ -382,14 +382,15 @@ ZeroBounce.Instance.ScoringDeleteFile(fileId,
 
 ### Run tests with Docker
 
-**Preferred:** from the **parent SDKs folder** (where `docker-compose.yml` lives); the C# tree is mounted into the container so you always test your working copy:
+**Preferred:** from the **`sdk-docs/`** folder in the SDKs monorepo; the C# tree is mounted into the container so you always test your working copy:
 
 ```bash
+cd sdk-docs
 docker compose build csharp
 docker compose run --rm csharp
 ```
 
-**From this directory only** (no `docker-compose.yml`): build the toolchain image, then mount this folder at `/app`:
+**From this directory only:** build the toolchain image, then mount this folder at `/app`:
 
 ```bash
 docker build -t zerobounce-csharp-sdk:tool .
@@ -402,26 +403,7 @@ If you have the .NET SDK installed locally, you can still use `dotnet test` / `d
 
 ## Publish
 
-Publishing to NuGet uses **GitHub Actions trusted publishing** (OIDC). See [sdk-docs (NuGet)](../sdk-docs/nuget/) and [Microsoft docs](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing).
+1. Bump `PackageVersion` in `ZeroBounceSDK/ZeroBounceSDK.csproj`, commit, tag (`vX.Y.Z`), push tag.
+2. **Actions → Publish → Run workflow** with that tag.
 
-**Trusted publishing:** sign in to nuget.org as the account that **created** the policy (likely **ZeroBounceIntegrations**), with **Package owner** set to **ZeroBounceAPI**. The workflow uses `ZeroBounceIntegrations` for `NuGet/login` — that is the policy creator, not the package owner shown on the policy.
-
-1. Bump `PackageVersion` / `Version` in `ZeroBounceSDK/ZeroBounceSDK.csproj`, commit, tag (e.g. `v2.1.4`), and push the tag.
-2. Ensure a GitHub environment named **`release`** exists (must match the NuGet trusted publishing policy).
-3. **Actions → Publish → Run workflow** and enter the tag, or:
-
-```bash
-gh workflow run publish.yml -f tag=v2.1.4
-```
-
-### Local Docker (optional)
-
-If you prefer the pinned Docker toolchain (same steps as CI, no host .NET SDK required):
-
-```bash
-export NUGET_API_KEY=your_api_key
-./scripts/publish-nuget.sh              # publish current checkout
-./scripts/publish-nuget.sh --last-tag   # checkout latest git tag and publish it
-```
-
-For manual `docker compose` steps, see the [sdk-docs (NuGet)](../sdk-docs/nuget/) guide.
+Registry: [ZeroBounce.SDK on NuGet](https://www.nuget.org/packages/ZeroBounce.SDK)
