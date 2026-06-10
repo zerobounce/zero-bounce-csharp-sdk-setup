@@ -404,7 +404,7 @@ If you have the .NET SDK installed locally, you can still use `dotnet test` / `d
 
 Publishing to NuGet uses **GitHub Actions trusted publishing** (OIDC). See [sdk-docs (NuGet)](../sdk-docs/nuget/) and [Microsoft docs](https://learn.microsoft.com/en-us/nuget/nuget-org/trusted-publishing).
 
-**Trusted publishing** is configured under **ZeroBounceAPI** (the nuget.org package owner). The workflow uses `NuGet/login` with user `ZeroBounceAPI` and the GitHub **`release`** environment.
+**Trusted publishing:** sign in to nuget.org as the account that **created** the policy (likely **ZeroBounceIntegrations**), with **Package owner** set to **ZeroBounceAPI**. The workflow uses `ZeroBounceIntegrations` for `NuGet/login` — that is the policy creator, not the package owner shown on the policy.
 
 1. Bump `PackageVersion` / `Version` in `ZeroBounceSDK/ZeroBounceSDK.csproj`, commit, tag (e.g. `v2.1.4`), and push the tag.
 2. Ensure a GitHub environment named **`release`** exists (must match the NuGet trusted publishing policy).
