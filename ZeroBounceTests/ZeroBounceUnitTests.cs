@@ -311,6 +311,8 @@ public class Tests
         ZeroBounceTest.Instance.ValidateBatch(emailBatch,
             response =>
             {
+                Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("api.zerobounce.net/v2/validatebatch"));
+                Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Not.Contain("bulkapi"));
                 Assert.That(response.EmailBatch.Count, Is.EqualTo(3));
                 Assert.That(response.Errors.Count, Is.EqualTo(0));
                 Assert.That(response.EmailBatch[0].Address, Is.EqualTo("valid@example.com"));

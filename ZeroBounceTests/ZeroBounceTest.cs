@@ -11,6 +11,8 @@ class ZeroBounceTest : ZeroBounce
     protected static readonly new ZeroBounceTest _instance = new();
     public static new ZeroBounceTest Instance => _instance;
 
+    public string? LastRequestUri { get; private set; }
+
     public void SetHttpClient(HttpClient client)
     {
         _client?.Dispose();
@@ -41,6 +43,7 @@ class ZeroBounceTest : ZeroBounce
             )
             .ReturnsAsync((HttpRequestMessage request, CancellationToken token) =>
             {
+                LastRequestUri = request.RequestUri?.ToString();
                 HttpResponseMessage httpResponse = new HttpResponseMessage(HttpStatusCode.OK)
                 {
                     Content = new StringContent(response)
