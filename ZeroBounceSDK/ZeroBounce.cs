@@ -104,7 +104,7 @@ namespace ZeroBounceSDK
             var json = JsonConvert.SerializeObject(requestData);
 
             _sendJsonRequest(
-                BulkApiBaseUrl + "/validatebatch",
+                _apiBaseUrl + "/validatebatch",
                 json,
                 successCallback,
                 failureCallback).Wait();
