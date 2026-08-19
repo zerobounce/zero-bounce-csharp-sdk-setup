@@ -2,6 +2,13 @@
 This SDK contains methods for interacting easily with the ZeroBounce API.
 More information about ZeroBounce can be found in the [official documentation](https://www.zerobounce.net/docs/).
 
+
+## Security
+
+- Keep API keys on a trusted server. Do not embed them in mobile apps or browser JavaScript that untrusted users can inspect.
+- Custom API base URLs (when supported) must use `https://`. Do not pass end-user-controlled hosts into those settings.
+- Request URLs include `api_key` as a query parameter (ZeroBounce API contract). Do not log full request URLs or enable payload debug logging in production.
+
 ## INSTALLATION
 You can install by searching for `ZeroBounce.SDK` in the NuGet Package Manager, or run:
 ```bash

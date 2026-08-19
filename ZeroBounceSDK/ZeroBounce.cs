@@ -24,9 +24,23 @@ namespace ZeroBounceSDK
         public static ZeroBounce Instance => _instance;
 
         private const string BulkApiBaseUrl = "https://bulkapi.zerobounce.net/v2";
-        protected HttpClient _client = new HttpClient();
+        protected HttpClient _client = CreateHttpClient();
         private string _apiKey;
         private string _apiBaseUrl = ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL);
+
+        private static HttpClient CreateHttpClient()
+        {
+            return new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+        }
+
+        private static void RequireHttpsUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url) ||
+                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ZBClientException("base_url must be an https:// URL");
+            }
+        }
 
         /// <summary>
         /// Initialize the SDK with your API key. Uses default API base URL.
@@ -62,6 +76,7 @@ namespace ZeroBounceSDK
                 throw new ZBClientException("Empty parameter: api_key");
             _apiKey = apiKey;
             _apiBaseUrl = baseUrl == null ? ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL) : baseUrl.TrimEnd('/');
+            RequireHttpsUrl(_apiBaseUrl);
         }
 
         /// <param name="email">The email address you want to validate</param>
