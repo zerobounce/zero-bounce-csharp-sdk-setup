@@ -111,6 +111,24 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
 
+            if (options != null && options.UsePost)
+            {
+                var form = new Dictionary<string, string>
+                {
+                    { "api_key", _apiKey },
+                    { "email", email },
+                    { "ip_address", ipAddress ?? "" }
+                };
+                if (options.Timeout.HasValue)
+                    form["timeout"] = options.Timeout.Value.ToString();
+                if (options.ActivityData.HasValue)
+                    form["activity_data"] = options.ActivityData.Value ? "true" : "false";
+                if (options.VerifyPlus.HasValue)
+                    form["verify_plus"] = options.VerifyPlus.Value ? "true" : "false";
+                _sendFormPostRequest(_apiBaseUrl + "/validate", form, successCallback, failureCallback).Wait();
+                return;
+            }
+
             var query = _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email) + "&ip_address=" + Enc(ipAddress ?? "");
             if (options != null)
             {

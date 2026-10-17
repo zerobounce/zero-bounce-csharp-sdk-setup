@@ -11,5 +11,8 @@ namespace ZeroBounceSDK
 
         /// <summary>Maps to verify_plus.</summary>
         public bool? VerifyPlus { get; set; }
+
+        /// <summary>When true, sends form-encoded POST instead of GET.</summary>
+        public bool UsePost { get; set; }
     }
 }

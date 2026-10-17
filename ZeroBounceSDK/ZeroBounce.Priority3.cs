@@ -274,6 +274,18 @@ namespace ZeroBounceSDK
             _sendFormJsonCallback(_apiBaseUrl + "/filters/delete", form, successCallback, failureCallback).Wait();
         }
 
+        public void ListS3Files(string bucket, string search,
+            Action<List<ZBS3ListFileEntry>> successCallback, Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+            var query = BulkApiRootUrl + "/listS3files?api_key=" + Enc(_apiKey);
+            if (!string.IsNullOrWhiteSpace(bucket))
+                query += "&bucket=" + Enc(bucket);
+            if (!string.IsNullOrWhiteSpace(search))
+                query += "&search=" + Enc(search);
+            _sendRequest(query, successCallback, failureCallback).Wait();
+        }
+
         public void ValidateS3File(ValidateS3FileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
