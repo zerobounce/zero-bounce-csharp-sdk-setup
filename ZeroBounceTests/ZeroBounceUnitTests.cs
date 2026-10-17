@@ -682,4 +682,24 @@ public class Tests
             Assert.Fail);
         Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/validateS3file"));
     }
+
+    [Test]
+    public void ListS3FilesGetsBulkRoot()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"[
+            {""name"":""uploads/list.csv"",""size"":100,""last_modified"":""2024-01-01T00:00:00Z""}
+        ]");
+        ZeroBounceTest.Instance.ListS3Files(
+            "my-bucket",
+            "list",
+            entries =>
+            {
+                Assert.That(entries, Has.Count.EqualTo(1));
+                Assert.That(entries[0].Name, Is.EqualTo("uploads/list.csv"));
+            },
+            Assert.Fail);
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/listS3files"));
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bucket=my-bucket"));
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("search=list"));
+    }
 }
