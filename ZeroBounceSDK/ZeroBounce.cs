@@ -103,12 +103,26 @@ namespace ZeroBounceSDK
         public void Validate(string email, string ipAddress, Action<ZBValidateResponse> successCallback,
             Action<string> failureCallback)
         {
+            Validate(email, ipAddress, null, successCallback, failureCallback);
+        }
+
+        public void Validate(string email, string ipAddress, ZBValidateOptions options,
+            Action<ZBValidateResponse> successCallback, Action<string> failureCallback)
+        {
             if (InvalidApiKey(failureCallback)) return;
 
-            _sendRequest(
-                _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email) + "&ip_address=" + Enc(ipAddress ?? ""),
-                successCallback,
-                failureCallback).Wait(); 
+            var query = _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email) + "&ip_address=" + Enc(ipAddress ?? "");
+            if (options != null)
+            {
+                if (options.Timeout.HasValue)
+                    query += "&timeout=" + Enc(options.Timeout.Value.ToString());
+                if (options.ActivityData.HasValue)
+                    query += "&activity_data=" + Enc(options.ActivityData.Value ? "true" : "false");
+                if (options.VerifyPlus.HasValue)
+                    query += "&verify_plus=" + Enc(options.VerifyPlus.Value ? "true" : "false");
+            }
+
+            _sendRequest(query, successCallback, failureCallback).Wait();
         }
 
         /// <param name="emailBatch">A list of ZBValidateEmailRow objects</param>
@@ -116,6 +130,12 @@ namespace ZeroBounceSDK
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         public void ValidateBatch(List<ZBValidateEmailRow> emailBatch, Action<ZBValidateBatchResponse> successCallback,
             Action<string> failureCallback)
+        {
+            ValidateBatch(emailBatch, null, successCallback, failureCallback);
+        }
+
+        public void ValidateBatch(List<ZBValidateEmailRow> emailBatch, ZBValidateOptions options,
+            Action<ZBValidateBatchResponse> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
             if (emailBatch == null || emailBatch.Count == 0)
@@ -133,6 +153,12 @@ namespace ZeroBounceSDK
             }
 
             var requestData = new ZBValidateEmailRequest { ApiKey = _apiKey, EmailBatch = emailBatch };
+            if (options != null)
+            {
+                if (options.Timeout.HasValue) requestData.Timeout = options.Timeout;
+                if (options.ActivityData.HasValue) requestData.ActivityData = options.ActivityData;
+                if (options.VerifyPlus.HasValue) requestData.VerifyPlus = options.VerifyPlus;
+            }
             var json = JsonConvert.SerializeObject(requestData);
 
             _sendJsonRequest(
