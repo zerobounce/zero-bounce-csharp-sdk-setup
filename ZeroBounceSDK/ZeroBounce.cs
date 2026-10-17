@@ -42,6 +42,23 @@ namespace ZeroBounceSDK
             }
         }
 
+        private static string Enc(string value) => Uri.EscapeDataString(value ?? "");
+
+        private static string RedactApiKey(string message, string apiKey)
+        {
+            if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(message))
+                return message;
+            return message.Replace(apiKey, "***");
+        }
+
+        private static string SafeMultipartFileName(string fileName)
+        {
+            var baseName = Path.GetFileName(fileName ?? "upload.csv");
+            if (string.IsNullOrWhiteSpace(baseName))
+                baseName = "upload.csv";
+            return baseName.Replace("\"", "").Replace("\r", "").Replace("\n", "");
+        }
+
         /// <summary>
         /// Initialize the SDK with your API key. Uses default API base URL.
         /// </summary>
@@ -89,7 +106,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                _apiBaseUrl + "/validate?api_key=" + _apiKey + "&email=" + email + "&ip_address=" + (ipAddress ?? ""),
+                _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email) + "&ip_address=" + Enc(ipAddress ?? ""),
                 successCallback,
                 failureCallback).Wait(); 
         }
@@ -132,7 +149,7 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
 
-            _sendRequest(_apiBaseUrl + "/getcredits?api_key=" + _apiKey,
+            _sendRequest(_apiBaseUrl + "/getcredits?api_key=" + Enc(_apiKey),
                 successCallback, failureCallback).Wait();
         }
 
@@ -146,9 +163,9 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                _apiBaseUrl + "/getapiusage?api_key=" + _apiKey
-                + "&start_date=" + startDate.ToString("yyyy-MM-dd")  
-                + "&end_date=" + endDate.ToString("yyyy-MM-dd"),
+                _apiBaseUrl + "/getapiusage?api_key=" + Enc(_apiKey)
+                + "&start_date=" + Enc(startDate.ToString("yyyy-MM-dd"))
+                + "&end_date=" + Enc(endDate.ToString("yyyy-MM-dd")),
                 successCallback,
                 failureCallback).Wait();
         }
@@ -160,8 +177,8 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                _apiBaseUrl + "/activity?api_key=" + _apiKey
-                + "&email=" + email,
+                _apiBaseUrl + "/activity?api_key=" + Enc(_apiKey)
+                + "&email=" + Enc(email),
                 successCallback,
                 failureCallback).Wait();
         }
@@ -249,21 +266,21 @@ namespace ZeroBounceSDK
                 return;
             }
 
-            string url = _apiBaseUrl + "/guessformat?api_key=" + _apiKey;
+            string url = _apiBaseUrl + "/guessformat?api_key=" + Enc(_apiKey);
             if (domain != null) {
-                url += "&domain=" + (domain ?? "");
+                url += "&domain=" + Enc(domain ?? "");
             }
             if (companyName != null) {
-                url += "&company_name=" + (companyName ?? "");
+                url += "&company_name=" + Enc(companyName ?? "");
             }
             if (firstName != null) {
-                url += "&first_name=" + (firstName ?? "");
+                url += "&first_name=" + Enc(firstName ?? "");
             }
             if (middleName != null) {
-                url += "&middle_name=" + (middleName ?? "");
+                url += "&middle_name=" + Enc(middleName ?? "");
             }
             if (lastName != null) {
-                url += "&last_name=" + (lastName ?? "");
+                url += "&last_name=" + Enc(lastName ?? "");
             }
 
             _sendRequest(
@@ -308,12 +325,12 @@ namespace ZeroBounceSDK
                 return;
             }
 
-            string url = _apiBaseUrl + "/guessformat?api_key=" + _apiKey;
+            string url = _apiBaseUrl + "/guessformat?api_key=" + Enc(_apiKey);
             if (domain != null) {
-                url += "&domain=" + (domain ?? "");
+                url += "&domain=" + Enc(domain ?? "");
             }
             if (companyName != null) {
-                url += "&company_name=" + (companyName ?? "");
+                url += "&company_name=" + Enc(companyName ?? "");
             }
 
             _sendRequest(
@@ -336,11 +353,11 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
 
             _sendRequest(
-                _apiBaseUrl + "/guessformat?api_key=" + _apiKey
-                + "&domain=" + (domain ?? "")
-                + "&first_name=" + (firstName ?? "")
-                + "&middle_name=" + (middleName ?? "")
-                + "&last_name=" + (lastName ?? ""),
+                _apiBaseUrl + "/guessformat?api_key=" + Enc(_apiKey)
+                + "&domain=" + Enc(domain ?? "")
+                + "&first_name=" + Enc(firstName ?? "")
+                + "&middle_name=" + Enc(middleName ?? "")
+                + "&last_name=" + Enc(lastName ?? ""),
                 successCallback,
                 failureCallback).Wait();
         }
@@ -374,7 +391,7 @@ namespace ZeroBounceSDK
             }
 
             _sendRequest(
-                BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/filestatus?api_key=" + _apiKey + "&file_id=" + fileId,
+                BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/filestatus?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId),
                 successCallback, failureCallback).Wait();
         }
 
@@ -423,7 +440,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(e.Message);
+                failureCallback(RedactApiKey(e.Message, _apiKey));
             }
         }
 
@@ -456,7 +473,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(e.Message);
+                failureCallback(RedactApiKey(e.Message, _apiKey));
             }
         }
 
@@ -479,7 +496,7 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new MultipartFormDataContent();
-                content.Add(new StreamContent(file), "file", fileName);
+                content.Add(new StreamContent(file), "file", SafeMultipartFileName(fileName));
 
                 content.Add(new StringContent(_apiKey), "api_key");
 
@@ -512,7 +529,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(e.Message);
+                failureCallback(RedactApiKey(e.Message, _apiKey));
             }
         }
 
@@ -569,7 +586,7 @@ namespace ZeroBounceSDK
 
         private static string BuildGetFileUrl(string bulkBase, bool scoring, string apiKey, string fileId, GetFileOptions options)
         {
-            var url = bulkBase + (scoring ? "/scoring" : "") + "/getfile?api_key=" + apiKey + "&file_id=" + fileId;
+            var url = bulkBase + (scoring ? "/scoring" : "") + "/getfile?api_key=" + Enc(apiKey) + "&file_id=" + Enc(fileId);
             if (options == null) return url;
             if (options.DownloadType.HasValue)
                 url += "&download_type=" + DownloadTypeToQueryValue(options.DownloadType.Value);
@@ -640,7 +657,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(e.Message);
+                failureCallback(RedactApiKey(e.Message, _apiKey));
             }
         }
         
@@ -669,7 +686,7 @@ namespace ZeroBounceSDK
             }
 
             _sendRequest(
-                BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/deletefile?api_key=" + _apiKey + "&file_id=" + fileId,
+                BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/deletefile?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId),
                 successCallback,
                 failureCallback).Wait();
         }
@@ -694,7 +711,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(e.Message);
+                failureCallback(RedactApiKey(e.Message, _apiKey));
             }
         }
 
@@ -711,7 +728,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(e.Message);
+                failureCallback(RedactApiKey(e.Message, _apiKey));
             }
         }
     }
