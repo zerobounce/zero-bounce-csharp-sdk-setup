@@ -169,6 +169,36 @@ public class Tests
     }
 
     [Test]
+    public void ScoreEmail()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""email"": ""mark@gmail.com"",
+            ""score"": 10
+        }");
+        ZeroBounceTest.Instance.ScoreEmail("mark@gmail.com",
+            response =>
+            {
+                Assert.That(response.Email, Is.EqualTo("mark@gmail.com"));
+                Assert.That(response.Score, Is.EqualTo(10));
+            },
+            error => Assert.Fail(error)
+        );
+
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""email"": ""mark@gmail.com"",
+            ""score"": 10
+        }");
+        ZeroBounceTest.Instance.ScoreEmailPost("mark@gmail.com",
+            response =>
+            {
+                Assert.That(response.Email, Is.EqualTo("mark@gmail.com"));
+                Assert.That(response.Score, Is.EqualTo(10));
+            },
+            error => Assert.Fail(error)
+        );
+    }
+
+    [Test]
     public void GetActivity()
     {
         ZeroBounceTest.Instance.MockResponse(@"{

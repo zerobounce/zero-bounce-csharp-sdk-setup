@@ -209,6 +209,33 @@ namespace ZeroBounceSDK
                 failureCallback).Wait();
         }
 
+        /// <summary>Real-time AI scoring for a single email (GET /scoring).</summary>
+        public void ScoreEmail(string email, Action<ZBScoreEmailResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            _sendRequest(
+                _apiBaseUrl + "/scoring?api_key=" + Enc(_apiKey)
+                + "&email=" + Enc(email),
+                successCallback,
+                failureCallback).Wait();
+        }
+
+        /// <summary>Real-time AI scoring for a single email (POST /scoring, form-encoded).</summary>
+        public void ScoreEmailPost(string email, Action<ZBScoreEmailResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            var form = new Dictionary<string, string>
+            {
+                { "api_key", _apiKey },
+                { "email", email }
+            };
+            _sendFormPostRequest(_apiBaseUrl + "/scoring", form, successCallback, failureCallback).Wait();
+        }
+
         /// <param name="domain">The email domain for which to find the email format.</param>
         /// <param name="first_name">The first name of the person whose email format is being searched.</param>
         /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
@@ -747,6 +774,24 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
+                var result = await _client.PostAsync(url, content);
+                string responseString = await result.Content.ReadAsStringAsync();
+                var response = JsonConvert.DeserializeObject<T>(responseString);
+                successCallback(response);
+            }
+            catch (Exception e)
+            {
+                failureCallback(RedactApiKey(e.Message, _apiKey));
+            }
+        }
+
+        private async Task _sendFormPostRequest<T>(string url, Dictionary<string, string> form,
+            Action<T> successCallback, Action<string> failureCallback)
+            where T : ZBResponse
+        {
+            try
+            {
+                var content = new FormUrlEncodedContent(form);
                 var result = await _client.PostAsync(url, content);
                 string responseString = await result.Content.ReadAsStringAsync();
                 var response = JsonConvert.DeserializeObject<T>(responseString);
