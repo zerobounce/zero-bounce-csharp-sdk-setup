@@ -9,7 +9,7 @@ using Newtonsoft.Json;
 
 namespace ZeroBounceSDK
 {
-    public class ZeroBounce
+    public partial class ZeroBounce
     {
         protected static readonly ZeroBounce _instance = new ZeroBounce();
 

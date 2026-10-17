@@ -639,4 +639,47 @@ public class Tests
                 File.Delete(path);
         }
     }
+
+    [Test]
+    public void SendEmailFinderFileTargetsBulkApiEmailFinder()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""success"": true,
+            ""file_id"": ""abc-def"",
+            ""file_name"": ""finder.csv"",
+            ""message"": ""File Accepted""
+        }");
+        var path = Path.Combine(Path.GetTempPath(), "zb_finder.csv");
+        File.WriteAllText(path, "domain,name\nacme.com,Jane");
+        try
+        {
+            ZeroBounceTest.Instance.SendEmailFinderFile(
+                path,
+                1,
+                null,
+                _ => { },
+                Assert.Fail);
+            Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/email-finder/sendfile"));
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void ValidateS3FilePostsToBulkRoot()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""success"": true,
+            ""file_id"": ""s3-job"",
+            ""message"": ""File Accepted""
+        }");
+        ZeroBounceTest.Instance.ValidateS3File(
+            new ZeroBounce.ValidateS3FileOptions { FileName = "bucket/key.csv" },
+            _ => { },
+            Assert.Fail);
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/validateS3file"));
+    }
 }
