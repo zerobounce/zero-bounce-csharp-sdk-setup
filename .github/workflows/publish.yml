@@ -67,7 +67,7 @@ jobs:
       - name: Checkout tag
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.validate-tag.outputs.tag_sha }}
+          ref: refs/tags/${{ github.event.inputs.tag }}
           persist-credentials: false
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
@@ -120,6 +120,7 @@ jobs:
     needs: [validate-tag, publish]
     if: ${{ !cancelled() && !failure() }}
     runs-on: ubuntu-latest
+    environment: release
     permissions:
       contents: write
     steps:
