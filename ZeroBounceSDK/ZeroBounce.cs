@@ -786,6 +786,20 @@ namespace ZeroBounceSDK
             }
         }
 
+        private async Task _sendListRequest<T>(string url, Action<List<T>> successCallback, Action<string> failureCallback)
+        {
+            try
+            {
+                var responseString = await _client.GetStringAsync(url);
+                var response = JsonConvert.DeserializeObject<List<T>>(responseString);
+                successCallback(response ?? new List<T>());
+            }
+            catch (Exception e)
+            {
+                failureCallback(RedactApiKey(e.Message, _apiKey));
+            }
+        }
+
         private async Task _sendJsonRequest<T>(string url, string json, Action<T> successCallback, Action<string> failureCallback)
             where T : ZBResponse
         {

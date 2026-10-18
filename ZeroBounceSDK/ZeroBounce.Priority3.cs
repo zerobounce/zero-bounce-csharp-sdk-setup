@@ -283,7 +283,7 @@ namespace ZeroBounceSDK
                 query += "&bucket=" + Enc(bucket);
             if (!string.IsNullOrWhiteSpace(search))
                 query += "&search=" + Enc(search);
-            _sendRequest(query, successCallback, failureCallback).Wait();
+            _sendListRequest<ZBS3ListFileEntry>(query, successCallback, failureCallback).Wait();
         }
 
         public void ValidateS3File(ValidateS3FileOptions options,
