@@ -339,8 +339,8 @@ namespace ZeroBounceSDK
         {
             var fields = new Dictionary<string, string> { { "domain_column", domainColumn.ToString() } };
             if (options == null) return fields;
-            if (options.HasHeaderRow == true)
-                fields["has_header_row"] = "true";
+            if (options.HasHeaderRow.HasValue)
+                fields["has_header_row"] = options.HasHeaderRow.Value ? "true" : "false";
             if (options.FirstNameColumn > 0)
                 fields["first_name_column"] = options.FirstNameColumn.ToString();
             if (options.LastNameColumn > 0)
@@ -355,8 +355,8 @@ namespace ZeroBounceSDK
         private static Dictionary<string, string> BuildDomainSearchFields(int domainColumn, DomainSearchSendFileOptions options)
         {
             var fields = new Dictionary<string, string> { { "domain_column", domainColumn.ToString() } };
-            if (options?.HasHeaderRow == true)
-                fields["has_header_row"] = "true";
+            if (options?.HasHeaderRow.HasValue == true)
+                fields["has_header_row"] = options.HasHeaderRow.Value ? "true" : "false";
             return fields;
         }
 
@@ -403,14 +403,7 @@ namespace ZeroBounceSDK
                 content.Add(new StreamContent(file), "file", SafeMultipartFileName(fileName));
 
                 var result = await _client.PostAsync(url, content);
-                var responseString = await result.Content.ReadAsStringAsync();
-                if (!result.IsSuccessStatusCode)
-                {
-                    failureCallback(responseString);
-                    return;
-                }
-                var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
-                successCallback(response);
+                await DispatchJson(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
@@ -427,14 +420,7 @@ namespace ZeroBounceSDK
             {
                 var content = new FormUrlEncodedContent(fields);
                 var result = await _client.PostAsync(BulkApiRootUrl + path, content);
-                var responseString = await result.Content.ReadAsStringAsync();
-                if (!result.IsSuccessStatusCode)
-                {
-                    failureCallback(responseString);
-                    return;
-                }
-                var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
-                successCallback(response);
+                await DispatchJson(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
@@ -485,51 +471,7 @@ namespace ZeroBounceSDK
             {
                 var url = baseUrl + "/getfile?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId);
                 var response = await _client.GetAsync(url);
-                var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-
-                if (contentType.Contains("application/json"))
-                {
-                    var responseString = await response.Content.ReadAsStringAsync();
-                    var jsonResponse = JsonConvert.DeserializeObject<ZBGetFileResponse>(responseString);
-                    var isError = jsonResponse != null &&
-                        (!jsonResponse.Success ||
-                         !string.IsNullOrEmpty(jsonResponse.Message) ||
-                         !string.IsNullOrEmpty(jsonResponse.Error) ||
-                         !string.IsNullOrEmpty(jsonResponse.ErrorMessage));
-                    if (isError)
-                    {
-                        failureCallback(
-                            jsonResponse.Message
-                            ?? jsonResponse.ErrorMessage
-                            ?? jsonResponse.Error
-                            ?? "Request not processed successfully.");
-                        return;
-                    }
-                    successCallback(jsonResponse ?? new ZBGetFileResponse());
-                    return;
-                }
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var errBody = await response.Content.ReadAsStringAsync();
-                    failureCallback(string.IsNullOrWhiteSpace(errBody)
-                        ? ((int)response.StatusCode).ToString()
-                        : errBody);
-                    return;
-                }
-
-                var dirPath = Path.GetDirectoryName(localDownloadPath);
-                if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
-                using (var stream = await response.Content.ReadAsStreamAsync())
-                using (var fileStream = new FileStream(localDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
-                {
-                    await stream.CopyToAsync(fileStream);
-                }
-                successCallback(new ZBGetFileResponse
-                {
-                    Success = true,
-                    LocalFilePath = Path.GetFullPath(localDownloadPath)
-                });
+                await DeliverDownloadedFile(response, localDownloadPath, successCallback, failureCallback);
             }
             catch (Exception e)
             {
@@ -541,12 +483,23 @@ namespace ZeroBounceSDK
         {
             try
             {
-                var responseString = await _client.GetStringAsync(url);
-                successCallback(JObject.Parse(responseString));
+                var result = await _client.GetAsync(url);
+                var body = await ReadUsableBody(result, failureCallback);
+                if (body == null)
+                    return;
+                var token = JToken.Parse(body);
+                if (token is JObject obj)
+                    successCallback(obj);
+                else
+                    failureCallback("ZeroBounce returned an unexpected JSON response.");
+            }
+            catch (JsonException)
+            {
+                failureCallback("ZeroBounce returned a response that is not valid JSON.");
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
             }
         }
 
@@ -554,12 +507,19 @@ namespace ZeroBounceSDK
         {
             try
             {
-                var responseString = await _client.GetStringAsync(url);
-                successCallback(JToken.Parse(responseString));
+                var result = await _client.GetAsync(url);
+                var body = await ReadUsableBody(result, failureCallback);
+                if (body == null)
+                    return;
+                successCallback(JToken.Parse(body));
+            }
+            catch (JsonException)
+            {
+                failureCallback("ZeroBounce returned a response that is not valid JSON.");
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
             }
         }
 
@@ -570,17 +530,22 @@ namespace ZeroBounceSDK
             {
                 var content = new FormUrlEncodedContent(form);
                 var result = await _client.PostAsync(url, content);
-                var responseString = await result.Content.ReadAsStringAsync();
-                if (!result.IsSuccessStatusCode)
-                {
-                    failureCallback(responseString);
+                var body = await ReadUsableBody(result, failureCallback);
+                if (body == null)
                     return;
-                }
-                successCallback(JObject.Parse(responseString));
+                var token = JToken.Parse(body);
+                if (token is JObject obj)
+                    successCallback(obj);
+                else
+                    failureCallback("ZeroBounce returned an unexpected JSON response.");
+            }
+            catch (JsonException)
+            {
+                failureCallback("ZeroBounce returned a response that is not valid JSON.");
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
             }
         }
 
@@ -591,17 +556,18 @@ namespace ZeroBounceSDK
             {
                 var content = new FormUrlEncodedContent(form);
                 var result = await _client.PostAsync(url, content);
-                var responseString = await result.Content.ReadAsStringAsync();
-                if (!result.IsSuccessStatusCode)
-                {
-                    failureCallback(responseString);
+                var body = await ReadUsableBody(result, failureCallback);
+                if (body == null)
                     return;
-                }
-                successCallback(JToken.Parse(responseString));
+                successCallback(JToken.Parse(body));
+            }
+            catch (JsonException)
+            {
+                failureCallback("ZeroBounce returned a response that is not valid JSON.");
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
             }
         }
     }
