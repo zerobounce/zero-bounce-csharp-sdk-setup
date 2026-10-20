@@ -35,7 +35,8 @@ namespace ZeroBounceSDK
         Allowed,
         AcceptAll,
         RoleBasedAcceptAll,
-        Gold
+        Gold,
+        AiAgentMailbox
     }
     
     public sealed class ZBValidateSubStatusConverter : JsonConverter {
@@ -110,6 +111,8 @@ namespace ZeroBounceSDK
                     return ZBValidateSubStatus.RoleBasedAcceptAll;
                 case "gold":
                     return ZBValidateSubStatus.Gold;
+                case "ai_agent_mailbox":
+                    return ZBValidateSubStatus.AiAgentMailbox;
 
                 default:
                     return ZBValidateSubStatus.None;
@@ -209,6 +212,9 @@ namespace ZeroBounceSDK
                     break;
                 case ZBValidateSubStatus.Gold:
                     writer.WriteValue("gold");
+                    break;
+                case ZBValidateSubStatus.AiAgentMailbox:
+                    writer.WriteValue("ai_agent_mailbox");
                     break;
 
                 case ZBValidateSubStatus.None:

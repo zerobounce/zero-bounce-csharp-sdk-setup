@@ -261,6 +261,65 @@ public class Tests
     }
 
     [Test]
+    public void ValidateAiAgentMailboxValid()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""address"": ""agent@example.com"",
+            ""status"": ""valid"",
+            ""sub_status"": ""ai_agent_mailbox""
+        }");
+
+        ZeroBounceTest.Instance.Validate("agent@example.com", "127.0.0.1",
+            response =>
+            {
+                Assert.That(response.Status, Is.EqualTo(ZBValidateStatus.Valid));
+                Assert.That(response.SubStatus, Is.EqualTo(ZBValidateSubStatus.AiAgentMailbox));
+            },
+            error => { Assert.Fail(error); }
+        );
+    }
+
+    [Test]
+    public void ValidateAiAgentMailboxCatchAll()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""address"": ""agent@example.com"",
+            ""status"": ""catch-all"",
+            ""sub_status"": ""ai_agent_mailbox""
+        }");
+
+        ZeroBounceTest.Instance.Validate("agent@example.com", "127.0.0.1",
+            response =>
+            {
+                Assert.That(response.SubStatus, Is.EqualTo(ZBValidateSubStatus.AiAgentMailbox));
+            },
+            error => { Assert.Fail(error); }
+        );
+    }
+
+    [Test]
+    public void ValidateUnknownSubStatusFallsBackToNone()
+    {
+        // ZBValidateSubStatusConverter.ReadJson has a default branch returning
+        // None, so a sub_status added to the API after this SDK shipped parses
+        // to None instead of throwing.
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""address"": ""future@example.com"",
+            ""status"": ""valid"",
+            ""sub_status"": ""some_future_sub_status""
+        }");
+
+        ZeroBounceTest.Instance.Validate("future@example.com", "127.0.0.1",
+            response =>
+            {
+                Assert.That(response.Status, Is.EqualTo(ZBValidateStatus.Valid));
+                Assert.That(response.SubStatus, Is.EqualTo(ZBValidateSubStatus.None));
+            },
+            error => { Assert.Fail(error); }
+        );
+    }
+
+    [Test]
     public void ValidateBatch()
     {
         ZeroBounceTest.Instance.MockResponse(@"{
