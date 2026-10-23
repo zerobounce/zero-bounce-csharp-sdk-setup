@@ -71,7 +71,10 @@ namespace ZeroBounceSDK
                         if (accessDenied && (cloudflare || !HasErrorOrMessageKey(obj)))
                             return title;
 
-                        var fromField = FirstString(obj, "error", "error_message", "message");
+                        // The Inbox Placement Tester is a Django REST framework app:
+                        // it reports errors under "detail" rather than the
+                        // "error"/"message" keys the rest of the API uses.
+                        var fromField = FirstString(obj, "error", "error_message", "message", "detail");
                         if (!string.IsNullOrEmpty(fromField))
                             return StripErrorPrefix(fromField);
                     }

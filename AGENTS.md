@@ -9,7 +9,8 @@ Guidance for AI coding agents working in this repository.
 ## Layout
 
 - `ZeroBounceSDK/ZeroBounce.cs`: validation, bulk file, credits, activity, scoring.
-- `ZeroBounceSDK/ZeroBounce.Priority3.cs`: bulk email finder, domain search, list evaluator, filters, S3.
+- `ZeroBounceSDK/ZeroBounce.Priority3.cs`: bulk email finder, domain search, list evaluator, filters, and the S3 / SFTP bulk jobs. The six file jobs share `BulkFileJobOptions` and `_BulkRootFileJob`.
+- `ZeroBounceSDK/ZeroBounce.InboxPlacement.cs`: the Inbox Placement Tester. The API key goes on the query string, bodies are camelCase JSON, and it uses PUT and DELETE as well as GET and POST.
 - `ZeroBounceSDK/HttpErrors.cs`: turns HTTP failures, HTML pages, and empty or non-JSON bodies into a short failure-callback message.
 - `ZeroBounceTests/ZeroBounceUnitTests.cs`: scripted `HttpClient` responses.
 - `ZeroBounceTests/OfflineApiTests.cs`: offline suite. A fake `HttpMessageHandler` records every request and answers without the network.
@@ -29,6 +30,10 @@ Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It 
 ## Conventions
 
 - **One `ZeroBounce` per API key.** `Instance` is a process-wide singleton. Do not call `Initialize` with a second key on it. The constructor is `protected`; the offline tests subclass it so each client has its own key and handler.
+- **Only endpoints documented at https://www.zerobounce.net/docs/.** Do not add a method for an endpoint the public docs do not describe, even if it exists on the server. Check before concluding something is undocumented: the S3 and SFTP bulk endpoints live under https://www.zerobounce.net/docs/api-integrations, not the main API reference.
+- **Four base URLs.** `_apiBaseUrl`, `BulkApiBaseUrl` (ends in `/v2`), `BulkApiRootUrl` (the S3/SFTP jobs, **no** `/v2`), and `_listEvaluatorBaseUrl` / `_inboxPlacementBaseUrl`. The last two are separate hosts rather than paths built from the bulk base, so `Initialize(apiKey, baseUrl)` alone leaves them on the live API — use `SetListEvaluatorBaseUrl` / `SetInboxPlacementBaseUrl` in tests.
+- **Two bulk shapes are easy to get wrong.** `ValidateSFTPFile`'s `FileName` is optional — leaving it `null` uses the input bucket from the account's settings, and every other job requires it. `ExportSFTPFile` sends `export_path`, not the `export_bucket` that `ExportS3File` sends.
+- **`RecordedRequest.RawUri` un-escapes for display.** It comes from `Uri.ToString()`, which turns `%20` back into a space. Assert on `EscapedUri` (`Uri.AbsoluteUri`) when a test is about percent-encoding.
 - **Column indexes.** `SendFileOptions` name, gender, and IP columns default to `0`, and `0` means the field is left out. The email column is required and is sent as given, including `0`. `ValidateS3FileOptions.EmailAddressColumn` and `ScoreS3FileOptions.EmailAddressColumn` are `int?`: when set, `0` is sent. Bulk finder, domain search, and list evaluator reject a column below `1`.
 - **Optional parameters are omitted when unset.** `Timeout`, `ActivityData`, `VerifyPlus`, `AllowPhase2`, `DownloadType`, and `HasHeaderRow` (`bool?` on finder, domain search, and S3) are not sent until the caller sets them. Explicit `false` is sent as `false`.
 - **Booleans on multipart and form bodies are the strings `true` and `false`.** `SendFileOptions.HasHeaderRow` and `RemoveDuplicate` are non-nullable and are always sent. `allow_phase_2` is validation `SendFile` only, and only when `AllowPhase2` has a value. `activity_data` on get-file is validation only. Scoring `SendFile` ignores name, gender, IP, and `allow_phase_2`.

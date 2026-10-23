@@ -16,15 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bulk domain search (`SendDomainSearchFile`, `DomainSearchFileStatus`, `DomainSearchGetFile`, `DomainSearchDeleteFile`).
 - List evaluator (`SendListEvaluatorFile`, `GetListEvaluatorResult`, `SendEvaluatedFile`).
 - Filters (`AddFilter`, `ListFilters`, `DeleteFilter`).
-- S3 bulk (`ValidateS3File`, `ScoreS3File`, `ExportS3File`, `ListS3Files`).
+- S3 bulk (`ValidateS3File`, `ScoreS3File`, `ExportS3File`, `ListS3Files`, `EmailFinderS3File`, `DomainSearchS3File`).
+- SFTP/FTP bulk (`ValidateSFTPFile`, `ScoreSFTPFile`, `EmailFinderSFTPFile`, `DomainSearchSFTPFile`, `ExportSFTPFile`), sharing the new `BulkFileJobOptions`. The server, path and protocol come from your ZeroBounce settings. `ValidateSFTPFile`'s `FileName` is optional; `ExportSFTPFile` takes `export_path` rather than the `export_bucket` `ExportS3File` sends.
+- `ZBValidateOptions` accepts `DomainInfo`, `GreylistProcessing` and `CallbackUrl`. `CallbackUrl` needs `GreylistProcessing = true` and is rejected without it, and when blank, before a request is sent.
+- `ZBValidateResponse` reads `domain_website_exists`, `domain_registrant_company_name` and `Message`. `Message` is returned instead of a result while a greylist retry is still running.
+- Inbox Placement Tester on `https://bulkapi.zerobounce.net/api/ipt`: `GetInboxPlacementProviders`, `GetInboxPlacementTestTypes`, `CreateInboxPlacementTest`, `GetInboxPlacementTest`, `ListInboxPlacementTests`, `DeleteInboxPlacementTest`, `GetInboxPlacementWebhook`, `SetInboxPlacementWebhook`. The API key goes on the query string, bodies are camelCase JSON, and unset fields are left out.
+- `SetListEvaluatorBaseUrl` and `SetInboxPlacementBaseUrl`.
 
 ### Changed
 
+- The list evaluator uses its own base URL (`.../v2/listevaluator`) instead of building the path from the bulk base, and the file id is URL-encoded as one path segment. `SendEvaluatedFile` stays on the bulk base.
+- `ExportS3File`'s `exportBucket` is optional, matching the documented endpoint: passing `null` uses the export bucket from your ZeroBounce settings. A blank string is still rejected.
 - API requests time out after 120 seconds and do not follow redirects.
 - A custom API base URL must start with `https://`.
 - Query values, including the API key, email, and file id, are percent-encoded.
 
 ### Fixed
+
+- An error body whose JSON carries a `detail` string (the Inbox Placement Tester, a Django REST framework app) now surfaces that text.
 
 - A 403 HTML "Access denied" page is returned as a short error. An HTML page with status 200 is an error as well, including `GetFile`, `EmailFinderGetFile`, and `DomainSearchGetFile`, instead of a saved file or a JSON parse.
 - Empty and non-JSON bodies are a short error. The message is no longer the Newtonsoft parse text, and a repeated `Error:` / `[Error]:` prefix is removed.

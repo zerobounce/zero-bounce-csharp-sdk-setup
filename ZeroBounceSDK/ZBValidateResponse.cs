@@ -30,6 +30,18 @@ namespace ZeroBounceSDK
 
         [JsonProperty("active_in_days")] public string ActiveInDays;
 
+        /// <summary>Returned with domain_info.</summary>
+        [JsonProperty("domain_website_exists")] public string DomainWebsiteExists;
+
+        /// <summary>Returned with domain_info.</summary>
+        [JsonProperty("domain_registrant_company_name")] public string DomainRegistrantCompanyName;
+
+        /// <summary>
+        /// The API's "Message" key, returned instead of a result while a
+        /// greylist retry is still running.
+        /// </summary>
+        [JsonProperty("Message")] public string Message;
+
         [JsonProperty("active_first_seen")] public string ActiveFirstSeen;
 
         //[true/false] If the email comes from a free provider.

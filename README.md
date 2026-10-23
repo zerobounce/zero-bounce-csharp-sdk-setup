@@ -385,6 +385,110 @@ ZeroBounce.Instance.ScoringDeleteFile(fileId,
     });
 ```
 
+## Validate options
+
+`Validate` takes a `ZBValidateOptions`. An option left `null` is not sent, and
+booleans go on the wire as the strings `"true"`/`"false"`.
+
+```csharp
+var options = new ZBValidateOptions
+{
+    Timeout = 30,                 // 3-60 seconds
+    ActivityData = true,          // fills ActiveInDays / ActiveFirstSeen
+    VerifyPlus = true,
+    DomainInfo = true,            // fills DomainWebsiteExists / DomainRegistrantCompanyName
+    GreylistProcessing = true,
+    CallbackUrl = "https://example.com/greylist",
+    UsePost = true                // form-encoded POST /v2/validate instead of GET
+};
+
+ZeroBounce.Instance.Validate("<EMAIL>", "", options,
+    response => Console.WriteLine(response.Status),
+    error => Console.WriteLine(error));
+```
+
+`CallbackUrl` is where the greylist retry posts its result, so it is rejected
+without `GreylistProcessing = true` — before any request is sent. While that
+retry is still running the API answers with a `Message` instead of a result,
+which lands on `response.Message`.
+
+## S3 and SFTP/FTP bulk
+
+Queue a job on a file that already sits in your Amazon S3 bucket, or on your
+SFTP/FTP server. See the [S3](https://www.zerobounce.net/docs/api-integrations/amazon-s3-bulk-api)
+and [SFTP](https://www.zerobounce.net/docs/api-integrations/sftp_bulk_api) docs.
+These live on the bulkapi host *without* the `/v2` path.
+
+```csharp
+var zb = ZeroBounce.Instance;
+
+// Amazon S3. FileName is the full path, as returned by ListS3Files.
+zb.EmailFinderS3File(
+    new ZeroBounce.BulkFileJobOptions { FileName = "lists/leads.csv", HasHeaderRow = true },
+    ok, error);
+
+zb.DomainSearchS3File(
+    new ZeroBounce.BulkFileJobOptions
+    {
+        FileName = "lists/leads.csv",
+        RemoveDuplicates = true,
+        ReturnUrl = "https://example.com/zerobounce-done"
+    },
+    ok, error);
+
+// SFTP/FTP. The server, path and protocol come from your ZeroBounce settings.
+// FileName may be left null for ValidateSFTPFile alone, which then uses the
+// input bucket from those settings.
+zb.ValidateSFTPFile(new ZeroBounce.BulkFileJobOptions { HasHeaderRow = true }, ok, error);
+zb.ScoreSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
+zb.EmailFinderSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
+zb.DomainSearchSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
+
+// Note the field: this one takes export_path, not export_bucket.
+// null uses the export path from your settings.
+zb.ExportSFTPFile("<FILE_ID>", "/exports", ok, error);
+```
+
+## Inbox Placement Tester
+
+Runs on its own host, takes the API key on the query string, and sends camelCase
+JSON bodies. It spends the account's inbox-test credits.
+
+```csharp
+var zb = ZeroBounce.Instance;
+
+zb.GetInboxPlacementProviders(ok, error);
+zb.GetInboxPlacementTestTypes(ok, error);
+
+zb.CreateInboxPlacementTest("Launch",
+    new ZeroBounce.CreateInboxPlacementTestOptions
+    {
+        TestType = 1,
+        SenderEmail = "news@example.com",
+        WebhookUrl = "https://example.com/ipt-webhook"
+    },
+    ok, error);
+
+// Send your campaign to the seeds you got back, then read the results.
+zb.GetInboxPlacementTest("<TEST_ID>", ok, error);
+
+zb.ListInboxPlacementTests(
+    new ZeroBounce.ListInboxPlacementTestsOptions { Status = "finished", Page = 1 }, ok, error);
+zb.SetInboxPlacementWebhook("https://example.com/ipt-webhook", ok, error);
+zb.GetInboxPlacementWebhook(ok, error);
+zb.DeleteInboxPlacementTest("<TEST_ID>", ok, error);
+```
+
+## Per-API base URLs
+
+The list evaluator and the Inbox Placement Tester are separate hosts, so
+overriding the main base URL alone leaves them pointing at the live API.
+
+```csharp
+ZeroBounce.Instance.SetListEvaluatorBaseUrl("https://bulkapi.zerobounce.net/v2/listevaluator");
+ZeroBounce.Instance.SetInboxPlacementBaseUrl("https://bulkapi.zerobounce.net/api/ipt");
+```
+
 ## DEVELOPMENT
 
 ### Run tests with Docker

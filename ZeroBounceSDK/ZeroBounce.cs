@@ -128,6 +128,7 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
             if (RejectTimeout(options?.Timeout, false, failureCallback)) return;
+            if (RejectCallbackUrl(options, failureCallback)) return;
 
             if (options != null && options.UsePost)
             {
@@ -143,6 +144,12 @@ namespace ZeroBounceSDK
                     form["activity_data"] = options.ActivityData.Value ? "true" : "false";
                 if (options.VerifyPlus.HasValue)
                     form["verify_plus"] = options.VerifyPlus.Value ? "true" : "false";
+                if (options.DomainInfo.HasValue)
+                    form["domain_info"] = options.DomainInfo.Value ? "true" : "false";
+                if (options.GreylistProcessing.HasValue)
+                    form["greylist_processing"] = options.GreylistProcessing.Value ? "true" : "false";
+                if (options.CallbackUrl != null)
+                    form["callback_url"] = options.CallbackUrl;
                 _sendFormPostRequest(_apiBaseUrl + "/validate", form, successCallback, failureCallback).Wait();
                 return;
             }
@@ -156,6 +163,12 @@ namespace ZeroBounceSDK
                     query += "&activity_data=" + Enc(options.ActivityData.Value ? "true" : "false");
                 if (options.VerifyPlus.HasValue)
                     query += "&verify_plus=" + Enc(options.VerifyPlus.Value ? "true" : "false");
+                if (options.DomainInfo.HasValue)
+                    query += "&domain_info=" + Enc(options.DomainInfo.Value ? "true" : "false");
+                if (options.GreylistProcessing.HasValue)
+                    query += "&greylist_processing=" + Enc(options.GreylistProcessing.Value ? "true" : "false");
+                if (options.CallbackUrl != null)
+                    query += "&callback_url=" + Enc(options.CallbackUrl);
             }
 
             _sendRequest(query, successCallback, failureCallback).Wait();
@@ -760,6 +773,28 @@ namespace ZeroBounceSDK
                 return false;
             failureCallback("Invalid parameter: timeout (must be between 3 and 60 seconds)");
             return true;
+        }
+
+        /// <summary>
+        /// The callback is where the greylist retry posts its result, so it is
+        /// meaningless — and rejected by the API — without the retry itself.
+        /// Checked before any request is sent.
+        /// </summary>
+        private static bool RejectCallbackUrl(ZBValidateOptions options, Action<string> failureCallback)
+        {
+            if (options?.CallbackUrl == null)
+                return false;
+            if (string.IsNullOrWhiteSpace(options.CallbackUrl))
+            {
+                failureCallback("Empty parameter: callback_url");
+                return true;
+            }
+            if (options.GreylistProcessing != true)
+            {
+                failureCallback("Invalid parameter: callback_url requires greylist_processing to be true");
+                return true;
+            }
+            return false;
         }
 
         private async Task _sendRequest<T>(string url, Action<T> successCallback, Action<string> failureCallback)

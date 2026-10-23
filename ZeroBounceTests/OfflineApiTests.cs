@@ -932,6 +932,346 @@ public class OfflineApiTests
         Assert.That(message, Does.Not.Contain("[json.exception"));
     }
 
+    [Test]
+    public void ValidateSendsTheNewOptionsOnlyWhenSet()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "validate-key");
+
+        var (_, error) = Capture<ZBValidateResponse>((ok, fail) =>
+            client.Validate("a@example.com", "", new ZBValidateOptions(), ok, fail));
+        Assert.That(error, Is.Null);
+        var request = Only(api);
+        foreach (var absent in new[] { "domain_info", "greylist_processing", "callback_url" })
+            Assert.That(request.Fields.ContainsKey(absent), Is.False, absent + " should not be sent");
+        api.Clear();
+
+        var options = new ZBValidateOptions
+        {
+            DomainInfo = true,
+            GreylistProcessing = true,
+            CallbackUrl = "https://example.com/greylist"
+        };
+        (_, error) = Capture<ZBValidateResponse>((ok, fail) =>
+            client.Validate("a@example.com", "", options, ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        // Booleans go on the wire as the strings "true"/"false".
+        Assert.That(request.Fields["domain_info"], Is.EqualTo("true"));
+        Assert.That(request.Fields["greylist_processing"], Is.EqualTo("true"));
+        Assert.That(request.Fields["callback_url"], Is.EqualTo("https://example.com/greylist"));
+        api.Clear();
+
+        options.UsePost = true;
+        options.DomainInfo = false;
+        (_, error) = Capture<ZBValidateResponse>((ok, fail) =>
+            client.Validate("a@example.com", "", options, ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("POST"));
+        Assert.That(request.Fields["domain_info"], Is.EqualTo("false"));
+        Assert.That(request.Fields["callback_url"], Is.EqualTo("https://example.com/greylist"));
+    }
+
+    [Test]
+    public void DomainInfoAndGreylistFieldsLandOnTheResponse()
+    {
+        // Parsing only: the fake answers every /validate the same way, so this
+        // asserts the mapping rather than the request.
+        var json = "{\"address\":\"a@example.com\",\"status\":\"valid\"," +
+                   "\"domain_website_exists\":\"true\"," +
+                   "\"domain_registrant_company_name\":\"Example Inc\"," +
+                   "\"Message\":\"Greylisted email, we will retry\"}";
+        var response = JsonConvert.DeserializeObject<ZBValidateResponse>(json);
+
+        Assert.That(response!.DomainWebsiteExists, Is.EqualTo("true"));
+        Assert.That(response.DomainRegistrantCompanyName, Is.EqualTo("Example Inc"));
+        // While a greylist retry is still running the API answers with
+        // "Message" instead of a result.
+        Assert.That(response.Message, Is.EqualTo("Greylisted email, we will retry"));
+    }
+
+    [Test]
+    public void CallbackUrlWithoutGreylistProcessingSendsNoRequest()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "validate-key");
+
+        var (_, error) = Capture<ZBValidateResponse>((ok, fail) => client.Validate(
+            "a@example.com", "", new ZBValidateOptions { CallbackUrl = "https://example.com/cb" }, ok, fail));
+        Assert.That(error, Does.Contain("greylist_processing"));
+
+        (_, error) = Capture<ZBValidateResponse>((ok, fail) => client.Validate(
+            "a@example.com", "",
+            new ZBValidateOptions { GreylistProcessing = false, CallbackUrl = "https://example.com/cb" },
+            ok, fail));
+        Assert.That(error, Does.Contain("greylist_processing"));
+
+        (_, error) = Capture<ZBValidateResponse>((ok, fail) => client.Validate(
+            "a@example.com", "",
+            new ZBValidateOptions { GreylistProcessing = true, CallbackUrl = "   " }, ok, fail));
+        Assert.That(error, Does.Contain("callback_url"));
+
+        Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void S3AndSftpFileJobsSendTheDocumentedFieldsOnly()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "bulk-key");
+
+        var (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.EmailFinderS3File(
+            new ZeroBounce.BulkFileJobOptions { FileName = "lists/leads.csv", HasHeaderRow = true }, ok, fail));
+        Assert.That(error, Is.Null);
+        var request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("POST"));
+        Assert.That(request.Host, Is.EqualTo("bulkapi.zerobounce.net"));
+        // The S3 and SFTP jobs live on the bulkapi root, WITHOUT /v2.
+        Assert.That(request.Path, Is.EqualTo("/emailFinderS3file"));
+        Assert.That(request.Fields["file_name"], Is.EqualTo("lists/leads.csv"));
+        Assert.That(request.Fields["has_header_row"], Is.EqualTo("true"));
+        // Unset options stay off the request entirely.
+        Assert.That(request.Fields.ContainsKey("remove_duplicates"), Is.False);
+        Assert.That(request.Fields.ContainsKey("return_url"), Is.False);
+        api.Clear();
+
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.DomainSearchS3File(
+            new ZeroBounce.BulkFileJobOptions
+            {
+                FileName = "lists/leads.csv",
+                HasHeaderRow = false,
+                RemoveDuplicates = true,
+                ReturnUrl = "https://example.com/done"
+            }, ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Path, Is.EqualTo("/domainSearchS3file"));
+        Assert.That(request.Fields["has_header_row"], Is.EqualTo("false"));
+        Assert.That(request.Fields["remove_duplicates"], Is.EqualTo("true"));
+        Assert.That(request.Fields["return_url"], Is.EqualTo("https://example.com/done"));
+        api.Clear();
+
+        // file_name is optional for validateSFTPfile alone: without it the
+        // input bucket from the account's settings is used.
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ValidateSFTPFile(
+            new ZeroBounce.BulkFileJobOptions { HasHeaderRow = true }, ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Path, Is.EqualTo("/validateSFTPfile"));
+        Assert.That(request.Fields.ContainsKey("file_name"), Is.False);
+        Assert.That(request.Fields["has_header_row"], Is.EqualTo("true"));
+        api.Clear();
+
+        var named = new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" };
+        var jobs = new (string Path, Action<ZeroBounce.BulkFileJobOptions, Action<ZBSendFileResponse>, Action<string>> Call)[]
+        {
+            ("/validateSFTPfile", client.ValidateSFTPFile),
+            ("/scoreSFTPfile", client.ScoreSFTPFile),
+            ("/emailFinderSFTPfile", client.EmailFinderSFTPFile),
+            ("/domainSearchSFTPfile", client.DomainSearchSFTPFile)
+        };
+        foreach (var job in jobs)
+        {
+            (_, error) = Capture<ZBSendFileResponse>((ok, fail) => job.Call(named, ok, fail));
+            Assert.That(error, Is.Null);
+            request = Only(api);
+            Assert.That(request.Path, Is.EqualTo(job.Path));
+            Assert.That(request.Fields["file_name"], Is.EqualTo("my_file.txt"));
+            api.Clear();
+        }
+
+        // exportSFTPfile takes export_path, not the export_bucket exportS3file uses.
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ExportSFTPFile("fid", "/exports", ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Path, Is.EqualTo("/exportSFTPfile"));
+        Assert.That(request.Fields["file_id"], Is.EqualTo("fid"));
+        Assert.That(request.Fields["export_path"], Is.EqualTo("/exports"));
+        Assert.That(request.Fields.ContainsKey("export_bucket"), Is.False);
+        api.Clear();
+
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ExportSFTPFile("fid", null, ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(Only(api).Fields.ContainsKey("export_path"), Is.False);
+        api.Clear();
+
+        // exportS3file's bucket is optional in the same way.
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ExportS3File("fid", null, ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(Only(api).Fields.ContainsKey("export_bucket"), Is.False);
+    }
+
+    [Test]
+    public void BulkJobsRejectInvalidArgumentsBeforeARequest()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "bulk-key");
+        var blank = new ZeroBounce.BulkFileJobOptions { FileName = "   " };
+
+        var calls = new Action<ZeroBounce.BulkFileJobOptions, Action<ZBSendFileResponse>, Action<string>>[]
+        {
+            client.EmailFinderS3File, client.DomainSearchS3File,
+            client.ScoreSFTPFile, client.EmailFinderSFTPFile, client.DomainSearchSFTPFile,
+            // An unset name is allowed here, but a blank one is not.
+            client.ValidateSFTPFile
+        };
+        foreach (var call in calls)
+        {
+            var (_, error) = Capture<ZBSendFileResponse>((ok, fail) => call(blank, ok, fail));
+            Assert.That(error, Does.Contain("file_name"));
+        }
+
+        var (_, missing) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.EmailFinderS3File(new ZeroBounce.BulkFileJobOptions(), ok, fail));
+        Assert.That(missing, Does.Contain("file_name"));
+
+        var (_, fileIdError) = Capture<ZBSendFileResponse>((ok, fail) => client.ExportSFTPFile("  ", null, ok, fail));
+        Assert.That(fileIdError, Does.Contain("file_id"));
+        var (_, pathError) = Capture<ZBSendFileResponse>((ok, fail) => client.ExportSFTPFile("fid", " ", ok, fail));
+        Assert.That(pathError, Does.Contain("export_path"));
+        var (_, bucketError) = Capture<ZBSendFileResponse>((ok, fail) => client.ExportS3File("fid", " ", ok, fail));
+        Assert.That(bucketError, Does.Contain("export_bucket"));
+
+        Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ListEvaluatorUsesItsOwnBaseUrlAndEncodesTheFileId()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "eval-key");
+
+        var (_, error) = Capture<JObject>((ok, fail) => client.GetListEvaluatorResult("a b/c", ok, fail));
+        Assert.That(error, Is.Null);
+        var request = Only(api);
+        Assert.That(request.Host, Is.EqualTo("bulkapi.zerobounce.net"));
+        // The file id is one path segment, so a slash in it must stay encoded.
+        Assert.That(request.EscapedUri, Does.Contain("/v2/listevaluator/a%20b%2Fc/"));
+        api.Clear();
+
+        var (_, blank) = Capture<JObject>((ok, fail) => client.GetListEvaluatorResult("  ", ok, fail));
+        Assert.That(blank, Does.Contain("file_id"));
+        Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void InboxPlacementUsesItsOwnHostAndCamelCaseJson()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "ipt-key");
+
+        var (_, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementProviders(ok, fail));
+        Assert.That(error, Is.Null);
+        var request = Only(api);
+        Assert.That(request.Path, Is.EqualTo("/api/ipt/providers"));
+        // The API key goes on the query string here, not in the body.
+        Assert.That(request.ApiKey, Is.EqualTo("ipt-key"));
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementTestTypes(ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(Only(api).Path, Is.EqualTo("/api/ipt/test-types"));
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.CreateInboxPlacementTest("Launch",
+            new ZeroBounce.CreateInboxPlacementTestOptions
+            {
+                TestType = 1,
+                SenderEmail = "news@example.com",
+                WebhookUrl = "https://example.com/ipt"
+            }, ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("POST"));
+        Assert.That(request.Path, Is.EqualTo("/api/ipt/test"));
+        // Bodies are camelCase JSON, and unset fields are left out.
+        Assert.That(request.Fields["name"], Is.EqualTo("Launch"));
+        Assert.That(request.Fields["testType"], Is.EqualTo("1"));
+        Assert.That(request.Fields["senderEmail"], Is.EqualTo("news@example.com"));
+        Assert.That(request.Fields["webhookUrl"], Is.EqualTo("https://example.com/ipt"));
+        Assert.That(request.Fields.ContainsKey("providerIds"), Is.False);
+        Assert.That(request.Fields.ContainsKey("seedIds"), Is.False);
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.ListInboxPlacementTests(
+            new ZeroBounce.ListInboxPlacementTestsOptions { Status = "finished", Page = 1, PageSize = 25 }, ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Fields["status"], Is.EqualTo("finished"));
+        Assert.That(request.Fields["page"], Is.EqualTo("1"));
+        Assert.That(request.Fields["pageSize"], Is.EqualTo("25"));
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.ListInboxPlacementTests(null, ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Fields.ContainsKey("status"), Is.False);
+        Assert.That(request.Fields.ContainsKey("page"), Is.False);
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.DeleteInboxPlacementTest("a b/c", ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("DELETE"));
+        Assert.That(request.EscapedUri, Does.Contain("/api/ipt/test/a%20b%2Fc"));
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.SetInboxPlacementWebhook("https://example.com/ipt", ok, fail));
+        Assert.That(error, Is.Null);
+        request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("PUT"));
+        Assert.That(request.Path, Is.EqualTo("/api/ipt/webhook"));
+        Assert.That(request.Fields["webhookUrl"], Is.EqualTo("https://example.com/ipt"));
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementWebhook(ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(Only(api).Path, Is.EqualTo("/api/ipt/webhook"));
+        api.Clear();
+
+        var (_, testIdError) = Capture<JObject>((ok, fail) => client.GetInboxPlacementTest("  ", ok, fail));
+        Assert.That(testIdError, Does.Contain("test_id"));
+        var (_, nameError) = Capture<JObject>((ok, fail) => client.CreateInboxPlacementTest(" ", null, ok, fail));
+        Assert.That(nameError, Does.Contain("name"));
+        var (_, webhookError) = Capture<JObject>((ok, fail) => client.SetInboxPlacementWebhook("", ok, fail));
+        Assert.That(webhookError, Does.Contain("webhook_url"));
+        Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void InboxPlacementDetailErrorBecomesTheMessage()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "ipt-detail");
+
+        var (_, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementTest("123", ok, fail));
+
+        Assert.That(error, Does.Contain("Inbox placement test not found."));
+    }
+
+    [Test]
+    public void ListEvaluatorAndInboxPlacementBaseUrlsAreOverridable()
+    {
+        // These are separate hosts, not paths built from the bulk base, so an
+        // override of the main base URL alone would leave them on the live API.
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "eval-key");
+        client.SetListEvaluatorBaseUrl("https://bulk.example.test/v2/listevaluator");
+        client.SetInboxPlacementBaseUrl("https://bulk.example.test/api/ipt");
+
+        var (_, error) = Capture<JObject>((ok, fail) => client.GetListEvaluatorResult("fid", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(Only(api).Host, Is.EqualTo("bulk.example.test"));
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementProviders(ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(Only(api).Host, Is.EqualTo("bulk.example.test"));
+
+        Assert.Throws<ZBClientException>(new TestDelegate(() => client.SetListEvaluatorBaseUrl("http://evil.example")));
+    }
+
     private static (T? Response, string? Error) Capture<T>(Action<Action<T>, Action<string>> call) where T : class
     {
         T? response = null;
@@ -1023,6 +1363,13 @@ public class OfflineApiTests
         public string Path { get; set; } = "";
         public string ApiKey { get; set; } = "";
         public string RawUri { get; set; } = "";
+
+        /// <summary>
+        /// The escaped form, which is what actually goes on the wire.
+        /// <see cref="RawUri"/> comes from Uri.ToString(), which un-escapes
+        /// %20 and other safe characters for display.
+        /// </summary>
+        public string EscapedUri { get; set; } = "";
         public Dictionary<string, string> Fields { get; } = new(StringComparer.Ordinal);
     }
 
@@ -1062,7 +1409,8 @@ public class OfflineApiTests
                 Method = request.Method.Method,
                 Host = uri.Host,
                 Path = uri.AbsolutePath,
-                RawUri = uri.ToString()
+                RawUri = uri.ToString(),
+                EscapedUri = uri.AbsoluteUri
             };
             if (!string.IsNullOrEmpty(uri.Query))
                 ParseForm(uri.Query.TrimStart('?'), recorded.Fields);
@@ -1118,6 +1466,12 @@ public class OfflineApiTests
             {
                 const string body = "{\"type\":\"https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-1xxx-errors/error-1020/\",\"title\":\"Error 1020: Access denied\",\"status\":403,\"detail\":\"The request was blocked by a Cloudflare firewall rule configured by the site owner.\",\"error_code\":1020,\"cloudflare_error\":true,\"what_you_should_do\":\"Do not retry. This block is intentional.\"}";
                 return Text(HttpStatusCode.Forbidden, body, "application/json");
+            }
+            if (key.StartsWith("ipt-detail", StringComparison.Ordinal))
+            {
+                // The Inbox Placement Tester is a Django REST framework app and
+                // reports errors under "detail".
+                return Text(HttpStatusCode.NotFound, "{\"detail\":\"Inbox placement test not found.\"}", "application/json");
             }
             if (key.StartsWith("double-error-", StringComparison.Ordinal))
                 return Text(HttpStatusCode.BadRequest, "Error: Error: api_key is invalid", "text/plain");
