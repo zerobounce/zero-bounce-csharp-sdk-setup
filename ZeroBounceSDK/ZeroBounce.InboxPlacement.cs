@@ -93,7 +93,9 @@ namespace ZeroBounceSDK
                 if (options.Page.HasValue) query += "&page=" + Enc(options.Page.Value.ToString());
                 if (options.PageSize.HasValue) query += "&pageSize=" + Enc(options.PageSize.Value.ToString());
             }
-            _InboxPlacementRequest(HttpMethod.Get, "/test", query, null, successCallback, failureCallback);
+            // LIVE: the listing is GET /tests (plural). /test is the
+            // single-test path and answers Method "GET" not allowed.
+            _InboxPlacementRequest(HttpMethod.Get, "/tests", query, null, successCallback, failureCallback);
         }
 
         /// <summary>Deletes one test (DELETE /api/ipt/test/{id}).</summary>
@@ -136,7 +138,12 @@ namespace ZeroBounceSDK
             Action<JObject> successCallback, Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
-            var url = _inboxPlacementBaseUrl + path + "?api_key=" + Enc(_apiKey) + (extraQuery ?? "");
+            // LIVE: the Inbox Placement Tester authenticates with a Bearer
+            // header. Sent as an api_key parameter the request is rejected as
+            // unauthorized, and the key would end up in a logged query string.
+            var query = extraQuery ?? "";
+            if (query.StartsWith("&")) query = "?" + query.Substring(1);
+            var url = _inboxPlacementBaseUrl + path + query;
             _SendInboxPlacementRequest(method, url, body, successCallback, failureCallback).Wait();
         }
 
@@ -146,6 +153,8 @@ namespace ZeroBounceSDK
             try
             {
                 var request = new HttpRequestMessage(method, url);
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _apiKey);
                 if (body != null)
                     request.Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
 

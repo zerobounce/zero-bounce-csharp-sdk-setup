@@ -1022,7 +1022,12 @@ public class OfflineApiTests
         var client = new OfflineClient(api, "bulk-key");
 
         var (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.EmailFinderS3File(
-            new ZeroBounce.BulkFileJobOptions { FileName = "lists/leads.csv", HasHeaderRow = true }, ok, fail));
+            new ZeroBounce.BulkFileJobOptions
+            {
+                FileName = "lists/leads.csv",
+                HasHeaderRow = true,
+                ReturnUrl = "https://example.com/done"
+            }, ok, fail));
         Assert.That(error, Is.Null);
         var request = Only(api);
         Assert.That(request.Method, Is.EqualTo("POST"));
@@ -1031,9 +1036,9 @@ public class OfflineApiTests
         Assert.That(request.Path, Is.EqualTo("/emailFinderS3file"));
         Assert.That(request.Fields["file_name"], Is.EqualTo("lists/leads.csv"));
         Assert.That(request.Fields["has_header_row"], Is.EqualTo("true"));
+        Assert.That(request.Fields["return_url"], Is.EqualTo("https://example.com/done"));
         // Unset options stay off the request entirely.
         Assert.That(request.Fields.ContainsKey("remove_duplicates"), Is.False);
-        Assert.That(request.Fields.ContainsKey("return_url"), Is.False);
         api.Clear();
 
         (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.DomainSearchS3File(
@@ -1052,18 +1057,22 @@ public class OfflineApiTests
         Assert.That(request.Fields["return_url"], Is.EqualTo("https://example.com/done"));
         api.Clear();
 
-        // file_name is optional for validateSFTPfile alone: without it the
-        // input bucket from the account's settings is used.
+        // LIVE: file_name is required here too, although the docs list it as
+        // optional for this one endpoint.
         (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ValidateSFTPFile(
-            new ZeroBounce.BulkFileJobOptions { HasHeaderRow = true }, ok, fail));
-        Assert.That(error, Is.Null);
-        request = Only(api);
-        Assert.That(request.Path, Is.EqualTo("/validateSFTPfile"));
-        Assert.That(request.Fields.ContainsKey("file_name"), Is.False);
-        Assert.That(request.Fields["has_header_row"], Is.EqualTo("true"));
-        api.Clear();
+            new ZeroBounce.BulkFileJobOptions
+            {
+                HasHeaderRow = true,
+                ReturnUrl = "https://example.com/done"
+            }, ok, fail));
+        Assert.That(error, Does.Contain("file_name"));
+        Assert.That(api.Count, Is.EqualTo(0));
 
-        var named = new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" };
+        var named = new ZeroBounce.BulkFileJobOptions
+        {
+            FileName = "my_file.txt",
+            ReturnUrl = "https://example.com/done"
+        };
         var jobs = new (string Path, Action<ZeroBounce.BulkFileJobOptions, Action<ZBSendFileResponse>, Action<string>> Call)[]
         {
             ("/validateSFTPfile", client.ValidateSFTPFile),
@@ -1165,8 +1174,10 @@ public class OfflineApiTests
         Assert.That(error, Is.Null);
         var request = Only(api);
         Assert.That(request.Path, Is.EqualTo("/api/ipt/providers"));
-        // The API key goes on the query string here, not in the body.
-        Assert.That(request.ApiKey, Is.EqualTo("ipt-key"));
+        // LIVE: the Inbox Placement Tester authenticates with a Bearer header,
+        // and the key must not reach the query string, where it would be logged.
+        Assert.That(request.Authorization, Is.EqualTo("Bearer ipt-key"));
+        Assert.That(request.Fields.ContainsKey("api_key"), Is.False);
         api.Clear();
 
         (_, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementTestTypes(ok, fail));
@@ -1236,6 +1247,84 @@ public class OfflineApiTests
         Assert.That(nameError, Does.Contain("name"));
         var (_, webhookError) = Capture<JObject>((ok, fail) => client.SetInboxPlacementWebhook("", ok, fail));
         Assert.That(webhookError, Does.Contain("webhook_url"));
+        Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void SuccessFalseOnAnHttp200IsAnError()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "success-false-key");
+
+        // LIVE: the API answers an unknown file id with an HTTP 200 whose body
+        // says success: false.
+        var (_, error) = Capture<ZBFileStatusResponse>((ok, fail) =>
+            client.FileStatus("0d1b7a4e-1111-2222-3333-444455556666", ok, fail));
+        Assert.That(error, Does.Contain("File cannot be found."));
+        Assert.That(client.LastApiError, Is.Not.Null);
+        Assert.That(client.LastApiError.StatusCode, Is.EqualTo(200));
+    }
+
+    [Test]
+    public void ValidateBatchSendsTimeoutAsAString()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "batch-key");
+
+        // LIVE: sent as a JSON number the API rejects the whole batch with the
+        // account-level "Invalid API Key or your account ran out of credits".
+        var (_, error) = Capture<ZBValidateBatchResponse>((ok, fail) => client.ValidateBatch(
+            new List<ZBValidateEmailRow> { new ZBValidateEmailRow { EmailAddress = "a@example.com" } },
+            new ZBValidateOptions { Timeout = 30, VerifyPlus = true }, ok, fail));
+        Assert.That(error, Is.Null);
+        var request = Only(api);
+        Assert.That(request.Fields["timeout"], Is.EqualTo("30"));
+        Assert.That(request.RawBody, Does.Contain("\"timeout\":\"30\""));
+        Assert.That(request.RawBody, Does.Contain("\"verify_plus\":true"));
+    }
+
+    [Test]
+    public void SendEvaluatedFilePostsTheFileIdAsAFormField()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "eval-key");
+
+        // LIVE: send-evaluated-file takes the evaluator's file_id as a form
+        // field, not the file upload the docs describe.
+        var (_, error) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.SendEvaluatedFile("eval-file-1", ok, fail));
+        Assert.That(error, Is.Null);
+        var request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("POST"));
+        Assert.That(request.Path, Is.EqualTo("/v2/send-evaluated-file/"));
+        Assert.That(request.Fields["file_id"], Is.EqualTo("eval-file-1"));
+
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.SendEvaluatedFile("  ", ok, fail));
+        Assert.That(error, Does.Contain("file_id"));
+    }
+
+    [Test]
+    public void BulkJobsRequireFileNameAndReturnUrl()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "bulk-key");
+        var done = "https://example.com/done";
+
+        // LIVE: both fields are required on every one of these jobs.
+        foreach (var call in new Action<ZeroBounce.BulkFileJobOptions, Action<ZBSendFileResponse>, Action<string>>[]
+                 {
+                     client.EmailFinderS3File, client.DomainSearchS3File, client.ValidateSFTPFile,
+                     client.ScoreSFTPFile, client.EmailFinderSFTPFile, client.DomainSearchSFTPFile
+                 })
+        {
+            var (_, missingName) = Capture<ZBSendFileResponse>((ok, fail) =>
+                call(new ZeroBounce.BulkFileJobOptions { ReturnUrl = done }, ok, fail));
+            Assert.That(missingName, Does.Contain("file_name"));
+
+            var (_, missingUrl) = Capture<ZBSendFileResponse>((ok, fail) =>
+                call(new ZeroBounce.BulkFileJobOptions { FileName = "f.csv" }, ok, fail));
+            Assert.That(missingUrl, Does.Contain("return_url"));
+        }
         Assert.That(api.Count, Is.EqualTo(0));
     }
 
@@ -1362,6 +1451,10 @@ public class OfflineApiTests
         public string Host { get; set; } = "";
         public string Path { get; set; } = "";
         public string ApiKey { get; set; } = "";
+        /// <summary>The Authorization header, for the Inbox Placement Tester's Bearer key.</summary>
+        public string Authorization { get; set; } = "";
+        /// <summary>The body exactly as it went on the wire, for JSON shape assertions.</summary>
+        public string RawBody { get; set; } = "";
         public string RawUri { get; set; } = "";
 
         /// <summary>
@@ -1416,14 +1509,21 @@ public class OfflineApiTests
                 ParseForm(uri.Query.TrimStart('?'), recorded.Fields);
 
             if (request.Content != null)
-                await ReadContent(request.Content, recorded.Fields, cancellationToken);
+                recorded.RawBody = await ReadContent(request.Content, recorded.Fields, cancellationToken);
 
+            recorded.Authorization = request.Headers.Authorization == null
+                ? ""
+                : request.Headers.Authorization.Scheme + " " + request.Headers.Authorization.Parameter;
             recorded.Fields.TryGetValue("api_key", out var apiKey);
+            // The Inbox Placement Tester authenticates with a Bearer header
+            // rather than an api_key parameter, so the key can arrive either way.
+            if (string.IsNullOrEmpty(apiKey) && recorded.Authorization.StartsWith("Bearer "))
+                apiKey = recorded.Authorization.Substring("Bearer ".Length);
             recorded.ApiKey = apiKey ?? "";
             return recorded;
         }
 
-        private static async Task ReadContent(HttpContent content, Dictionary<string, string> fields, CancellationToken cancellationToken)
+        private static async Task<string> ReadContent(HttpContent content, Dictionary<string, string> fields, CancellationToken cancellationToken)
         {
             if (content is MultipartContent multipart)
             {
@@ -1433,7 +1533,7 @@ public class OfflineApiTests
                     var fileName = part.Headers.ContentDisposition?.FileName;
                     fields[name] = string.IsNullOrEmpty(fileName) ? await part.ReadAsStringAsync(cancellationToken) : "<file>";
                 }
-                return;
+                return "";
             }
 
             var body = await content.ReadAsStringAsync(cancellationToken);
@@ -1442,12 +1542,13 @@ public class OfflineApiTests
                 || (body.Contains('=') && !body.TrimStart().StartsWith('{') && !body.TrimStart().StartsWith('<')))
             {
                 ParseForm(body, fields);
-                return;
+                return body;
             }
             if (body.TrimStart().StartsWith('{'))
             {
                 Flatten(JObject.Parse(body), fields);
             }
+            return body;
         }
 
         private static HttpResponseMessage Answer(RecordedRequest request)
@@ -1457,6 +1558,13 @@ public class OfflineApiTests
             {
                 var status = key.StartsWith("html-403-", StringComparison.Ordinal) ? HttpStatusCode.Forbidden : HttpStatusCode.OK;
                 return Text(status, AccessDeniedPage, "text/html");
+            }
+            if (key.StartsWith("success-false-", StringComparison.Ordinal))
+            {
+                // LIVE: an unknown file id comes back as an HTTP 200 whose
+                // body says the call failed.
+                return Text(HttpStatusCode.OK,
+                    "{\"success\":false,\"message\":\"File cannot be found.\"}", "application/json");
             }
             if (key.StartsWith("empty-", StringComparison.Ordinal))
                 return Text(HttpStatusCode.OK, "", "application/json");

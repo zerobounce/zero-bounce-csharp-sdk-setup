@@ -225,28 +225,28 @@ namespace ZeroBounceSDK
                 failureCallback).Wait();
         }
 
-        public void SendEvaluatedFile(string filePath,
+        /// <summary>
+        /// Submits a finished evaluation for validation (POST /v2/send-evaluated-file/).
+        /// <para>
+        /// LIVE: this takes the list evaluator's file_id as a form field, not
+        /// the file upload the docs describe - an upload is rejected with
+        /// "file_id: This field is required". It returns a new validation
+        /// job's file_id, which answers "File cannot be found" for a short
+        /// while after it is accepted.
+        /// </para>
+        /// </summary>
+        /// <param name="fileId">the file_id returned by the list evaluator</param>
+        public void SendEvaluatedFile(string fileId,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            try
+            if (string.IsNullOrWhiteSpace(fileId))
             {
-                var fileName = Path.GetFileName(filePath);
-                using (var file = File.OpenRead(filePath))
-                {
-                    SendEvaluatedFile(file, fileName, successCallback, failureCallback);
-                }
+                failureCallback("Empty parameter: file_id");
+                return;
             }
-            catch (Exception e)
-            {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
-            }
-        }
-
-        public void SendEvaluatedFile(Stream file, string fileName,
-            Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
-        {
-            _SendBulkRootMultipart(BulkApiBaseUrl + "/send-evaluated-file/", file, fileName,
-                new Dictionary<string, string>(), successCallback, failureCallback).Wait();
+            _PostBulkRootForm("/v2/send-evaluated-file/",
+                new Dictionary<string, string> { { "file_id", fileId.Trim() } },
+                successCallback, failureCallback).Wait();
         }
 
         public void AddFilter(string rule, string target, string value,
@@ -385,14 +385,14 @@ namespace ZeroBounceSDK
         public void EmailFinderS3File(BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootFileJob("/emailFinderS3file", options, true, successCallback, failureCallback);
+            _BulkRootFileJob("/emailFinderS3file", options, successCallback, failureCallback);
         }
 
         /// <summary>Runs domain search on a file in your Amazon S3 bucket (POST /domainSearchS3file).</summary>
         public void DomainSearchS3File(BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootFileJob("/domainSearchS3file", options, true, successCallback, failureCallback);
+            _BulkRootFileJob("/domainSearchS3file", options, successCallback, failureCallback);
         }
 
         // SFTP / FTP bulk. The server, path and protocol are never sent by the
@@ -401,36 +401,35 @@ namespace ZeroBounceSDK
         /// <summary>
         /// Validates a file from your SFTP/FTP server (POST /validateSFTPfile).
         /// <para>
-        /// This is the one job whose file_name the docs list as optional: leave
-        /// <see cref="BulkFileJobOptions.FileName"/> null to use the input
-        /// bucket from your settings.
+        /// LIVE: file_name is required here too, although the docs list it as
+        /// optional for this one endpoint.
         /// </para>
         /// </summary>
         public void ValidateSFTPFile(BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootFileJob("/validateSFTPfile", options, false, successCallback, failureCallback);
+            _BulkRootFileJob("/validateSFTPfile", options, successCallback, failureCallback);
         }
 
         /// <summary>Scores a file from your SFTP/FTP server (POST /scoreSFTPfile).</summary>
         public void ScoreSFTPFile(BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootFileJob("/scoreSFTPfile", options, true, successCallback, failureCallback);
+            _BulkRootFileJob("/scoreSFTPfile", options, successCallback, failureCallback);
         }
 
         /// <summary>Runs the email finder on a file from your SFTP/FTP server (POST /emailFinderSFTPfile).</summary>
         public void EmailFinderSFTPFile(BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootFileJob("/emailFinderSFTPfile", options, true, successCallback, failureCallback);
+            _BulkRootFileJob("/emailFinderSFTPfile", options, successCallback, failureCallback);
         }
 
         /// <summary>Runs domain search on a file from your SFTP/FTP server (POST /domainSearchSFTPfile).</summary>
         public void DomainSearchSFTPFile(BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootFileJob("/domainSearchSFTPfile", options, true, successCallback, failureCallback);
+            _BulkRootFileJob("/domainSearchSFTPfile", options, successCallback, failureCallback);
         }
 
         /// <summary>
@@ -466,31 +465,37 @@ namespace ZeroBounceSDK
         /// root. Booleans go on the wire as the strings "true"/"false", and an
         /// option the caller left unset is not sent at all.
         /// </summary>
-        private void _BulkRootFileJob(string path, BulkFileJobOptions options, bool fileNameRequired,
+        /// <summary>
+        /// POSTs one of the six documented S3 / SFTP file jobs on the bulkapi root.
+        /// <para>
+        /// LIVE: file_name and return_url are required on every one of them,
+        /// validateSFTPfile included, although the docs list file_name as
+        /// optional for that one. Without either the API answers
+        /// "This field is required".
+        /// </para>
+        /// </summary>
+        private void _BulkRootFileJob(string path, BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            if (options == null)
+            if (options == null || string.IsNullOrWhiteSpace(options.FileName))
             {
                 failureCallback("Empty parameter: file_name");
                 return;
             }
-            var blank = options.FileName != null && string.IsNullOrWhiteSpace(options.FileName);
-            if ((options.FileName == null && fileNameRequired) || blank)
+            if (string.IsNullOrWhiteSpace(options.ReturnUrl))
             {
-                failureCallback("Empty parameter: file_name");
+                failureCallback("Empty parameter: return_url");
                 return;
             }
 
             var fields = new Dictionary<string, string>
             {
-                { "has_header_row", options.HasHeaderRow ? "true" : "false" }
+                { "has_header_row", options.HasHeaderRow ? "true" : "false" },
+                { "file_name", options.FileName },
+                { "return_url", options.ReturnUrl }
             };
-            if (options.FileName != null)
-                fields["file_name"] = options.FileName;
             if (options.RemoveDuplicates.HasValue)
                 fields["remove_duplicates"] = options.RemoveDuplicates.Value ? "true" : "false";
-            if (options.ReturnUrl != null)
-                fields["return_url"] = options.ReturnUrl;
 
             _PostBulkRootForm(path, fields, successCallback, failureCallback).Wait();
         }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -205,7 +206,8 @@ namespace ZeroBounceSDK
             var requestData = new ZBValidateEmailRequest { ApiKey = _apiKey, EmailBatch = emailBatch };
             if (options != null)
             {
-                if (options.Timeout.HasValue) requestData.Timeout = options.Timeout;
+                if (options.Timeout.HasValue)
+                    requestData.Timeout = options.Timeout.Value.ToString(CultureInfo.InvariantCulture);
                 if (options.ActivityData.HasValue) requestData.ActivityData = options.ActivityData;
                 if (options.VerifyPlus.HasValue) requestData.VerifyPlus = options.VerifyPlus;
             }
@@ -749,6 +751,25 @@ namespace ZeroBounceSDK
                 failureCallback).Wait();
         }
 
+        /// <summary>
+        /// The detail of the failure the most recent callback on this client
+        /// reported: the same short message, plus the HTTP status.
+        /// <para>
+        /// It is set synchronously, immediately before the failure callback
+        /// runs, so reading it from inside that callback always describes the
+        /// call that is failing. Use one client per key and per thread, as the
+        /// rest of this SDK already asks.
+        /// </para>
+        /// </summary>
+        public ZBApiError LastApiError { get; private set; }
+
+        /// <summary>Records the detail, then hands the short message to the caller.</summary>
+        private void Fail(Action<string> failureCallback, string message, int statusCode)
+        {
+            LastApiError = new ZBApiError(message, statusCode);
+            failureCallback(message);
+        }
+
         private bool InvalidApiKey(Action<string> failureCallback)
         {
             if (_apiKey != null) return false;
@@ -916,7 +937,14 @@ namespace ZeroBounceSDK
             var status = (int)result.StatusCode;
             if (status > 299 || HttpErrors.ContentTypeIsHtml(media) || HttpErrors.BodyLooksLikeHtml(body) || string.IsNullOrWhiteSpace(body))
             {
-                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey));
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
+                return null;
+            }
+            // LIVE: {"success": false} on an HTTP 200 is a failure, not a
+            // result. The API answers an unknown bulk file id that way.
+            if (HttpErrors.SuccessMeansFailure(body))
+            {
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
                 return null;
             }
             return body;

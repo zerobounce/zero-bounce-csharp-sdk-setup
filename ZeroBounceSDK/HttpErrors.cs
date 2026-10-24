@@ -39,6 +39,30 @@ namespace ZeroBounceSDK
             return message;
         }
 
+        /// <summary>
+        /// Whether a JSON body says the call failed although the HTTP status
+        /// was a success. The API sends "success" as a JSON false, "false" or
+        /// "False" depending on the endpoint.
+        /// </summary>
+        public static bool SuccessMeansFailure(string body)
+        {
+            var trimmed = (body ?? "").Trim();
+            if (!trimmed.StartsWith("{")) return false;
+            try
+            {
+                var parsed = JObject.Parse(trimmed);
+                if (!parsed.TryGetValue("success", out var value)) return false;
+                if (value.Type == JTokenType.Boolean) return !value.Value<bool>();
+                return value.Type == JTokenType.String &&
+                       string.Equals(value.Value<string>()?.Trim(), "false",
+                                     StringComparison.OrdinalIgnoreCase);
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
         public static string MessageFromBody(string body, int statusCode)
         {
             var trimmed = (body ?? "").Trim();
