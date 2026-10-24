@@ -423,26 +423,29 @@ These live on the bulkapi host *without* the `/v2` path.
 var zb = ZeroBounce.Instance;
 
 // Amazon S3. FileName is the full path, as returned by ListS3Files.
-zb.EmailFinderS3File(
-    new ZeroBounce.BulkFileJobOptions { FileName = "lists/leads.csv", HasHeaderRow = true },
-    ok, error);
-
-zb.DomainSearchS3File(
-    new ZeroBounce.BulkFileJobOptions
-    {
-        FileName = "lists/leads.csv",
-        RemoveDuplicates = true,
-        ReturnUrl = "https://example.com/zerobounce-done"
-    },
-    ok, error);
+// FileName and ReturnUrl are required on every one of these jobs.
+var s3 = new ZeroBounce.BulkFileJobOptions
+{
+    FileName = "lists/leads.csv",
+    HasHeaderRow = true,
+    ReturnUrl = "https://example.com/zerobounce-done"
+};
+zb.EmailFinderS3File(s3, ok, error);
+zb.DomainSearchS3File(s3, ok, error);
 
 // SFTP/FTP. The server, path and protocol come from your ZeroBounce settings.
-// FileName may be left null for ValidateSFTPFile alone, which then uses the
-// input bucket from those settings.
-zb.ValidateSFTPFile(new ZeroBounce.BulkFileJobOptions { HasHeaderRow = true }, ok, error);
-zb.ScoreSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
-zb.EmailFinderSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
-zb.DomainSearchSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
+// The docs list FileName as optional for ValidateSFTPFile, but the live API
+// requires it there too.
+var sftp = new ZeroBounce.BulkFileJobOptions
+{
+    FileName = "my_file.txt",
+    HasHeaderRow = true,
+    ReturnUrl = "https://example.com/zerobounce-done"
+};
+zb.ValidateSFTPFile(sftp, ok, error);
+zb.ScoreSFTPFile(sftp, ok, error);
+zb.EmailFinderSFTPFile(sftp, ok, error);
+zb.DomainSearchSFTPFile(sftp, ok, error);
 
 // Note the field: this one takes export_path, not export_bucket.
 // null uses the export path from your settings.
@@ -451,8 +454,8 @@ zb.ExportSFTPFile("<FILE_ID>", "/exports", ok, error);
 
 ## Inbox Placement Tester
 
-Runs on its own host, takes the API key on the query string, and sends camelCase
-JSON bodies. It spends the account's inbox-test credits.
+Runs on its own host, authenticates with an `Authorization: Bearer` header, and
+sends camelCase JSON bodies. It spends the account's inbox-test credits.
 
 ```csharp
 var zb = ZeroBounce.Instance;
@@ -488,6 +491,61 @@ overriding the main base URL alone leaves them pointing at the live API.
 ZeroBounce.Instance.SetListEvaluatorBaseUrl("https://bulkapi.zerobounce.net/v2/listevaluator");
 ZeroBounce.Instance.SetInboxPlacementBaseUrl("https://bulkapi.zerobounce.net/api/ipt");
 ```
+
+## Warmup API
+
+The Warmup API is a separate product. It has its own host, its own team-scoped key, and its own client; your validation key will not work with it.
+
+```csharp
+var warmup = new ZeroBounceWarmup();
+warmup.Initialize("<YOUR_WARMUP_API_KEY>");
+
+warmup.ListSendingAccounts(ok, error);
+warmup.GetProgressToday(ok, error);
+warmup.DownloadSeeds(csv => Console.WriteLine(csv), error);   // columns seed,provider
+```
+
+Add a from-address you run yourself, with one of the five standard engagement rules (0 Default, 1 Slow Pace, 2 Repair, 3 Boost, 4 Protect):
+
+```csharp
+warmup.AddSendingAccount("sender@example.com", "self_managed",
+    new ZeroBounceWarmup.AddSendingAccountOptions { EngagementRuleId = 0 }, ok, error);
+```
+
+A custom engagement rule can be changed only once every seven days; inside that window the API answers 429.
+
+```csharp
+warmup.CreateCustomEngagement("sender@example.com", 20, 20, 35, ok, error);  // reply, important, click %
+```
+
+`CheckDomainDmarc` takes an **email address**, not a domain — the live API rejects a bare domain even though the docs describe one:
+
+```csharp
+warmup.CheckDomainDmarc("sender@example.com", null, ok, error);
+```
+
+Every documented empty success (204, or an empty 200) arrives as a `null` payload, and a payload that is not a JSON object — `/seeds` is an array, `/seed-count` a bare number — arrives as that `JToken`. `warmup.LastApiError` carries the HTTP status of the most recent failure, alongside the short message the failure callback was given. Nothing is stored by `TestSmtpConfiguration`, and the credentials you pass it are masked out of any error it raises.
+
+## Live API suite
+
+`dotnet build` and `dotnet test` at the repo root never touch the network: the live suite is its own project and is not in the solution, so CI does not even build it. It needs real keys, which come from the environment and are never written anywhere:
+
+```bash
+export ZEROBOUNCE_API_KEY=...          # validation API
+export ZEROBOUNCE_WARMUP_API_KEY=...   # Warmup API
+dotnet run --project ZeroBounceLiveApi
+```
+
+By default it only makes free calls: sandbox addresses, reads, and requests that are expected to fail but still prove the API accepts the payload. It checks that the credit balance did not move. Two flags opt in to more:
+
+| Flag | What it adds |
+| --- | --- |
+| `ZEROBOUNCE_LIVE_SPEND=1` | billable calls (scoring, activity, email finder) and a bulk round trip that deletes its own job |
+| `ZEROBOUNCE_LIVE_CHANGES=1` | reversible account changes — a test filter and a self-managed Warmup sending account — each undone in cleanup even when a check fails |
+
+It never creates an Inbox Placement test, sets the Inbox Placement webhook, or starts ZB-managed Warmup onboarding, because the API cannot undo any of those.
+
+Run it by hand before every release: the offline suite proves the SDK sends what we think it sends, and only the live suite proves the API accepts it.
 
 ## DEVELOPMENT
 

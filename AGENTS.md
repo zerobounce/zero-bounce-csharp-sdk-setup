@@ -23,6 +23,19 @@ dotnet build ZeroBounceSDK/ZeroBounceSDK.csproj
 dotnet test ZeroBounceTests/ZeroBounceTests.csproj
 ```
 
+The live API suite is its own project and is **not** in
+`ZeroBounceCSharpSDKSetup.sln`, so neither a solution build nor CI touches it:
+
+```bash
+export ZEROBOUNCE_API_KEY=... ZEROBOUNCE_WARMUP_API_KEY=...
+dotnet run --project ZeroBounceLiveApi                          # free calls only
+ZEROBOUNCE_LIVE_SPEND=1 dotnet run --project ZeroBounceLiveApi
+ZEROBOUNCE_LIVE_CHANGES=1 dotnet run --project ZeroBounceLiveApi
+```
+
+Keys come from the environment only. Never write one into a file, a commit, a
+log, a fixture or a message.
+
 CI (`.github/workflows/sdk_ci.yml`) restores and runs `dotnet test ZeroBounceTests/ZeroBounceTests.csproj`. That build is the typecheck. There is no separate lint step.
 
 Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It tests, packs `ZeroBounceSDK.csproj`, pushes to NuGet, and creates the GitHub release.
@@ -32,7 +45,10 @@ Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It 
 - **One `ZeroBounce` per API key.** `Instance` is a process-wide singleton. Do not call `Initialize` with a second key on it. The constructor is `protected`; the offline tests subclass it so each client has its own key and handler.
 - **Only endpoints documented at https://www.zerobounce.net/docs/.** Do not add a method for an endpoint the public docs do not describe, even if it exists on the server. Check before concluding something is undocumented: the S3 and SFTP bulk endpoints live under https://www.zerobounce.net/docs/api-integrations, not the main API reference.
 - **Four base URLs.** `_apiBaseUrl`, `BulkApiBaseUrl` (ends in `/v2`), `BulkApiRootUrl` (the S3/SFTP jobs, **no** `/v2`), and `_listEvaluatorBaseUrl` / `_inboxPlacementBaseUrl`. The last two are separate hosts rather than paths built from the bulk base, so `Initialize(apiKey, baseUrl)` alone leaves them on the live API — use `SetListEvaluatorBaseUrl` / `SetInboxPlacementBaseUrl` in tests.
-- **Two bulk shapes are easy to get wrong.** `ValidateSFTPFile`'s `FileName` is optional — leaving it `null` uses the input bucket from the account's settings, and every other job requires it. `ExportSFTPFile` sends `export_path`, not the `export_bucket` that `ExportS3File` sends.
+- **Where the live API and the docs disagree, follow the API and say so in a comment at the call site.** The ones found so far: `validatebatch` takes `timeout` as a JSON *string*; the Inbox Placement Tester authenticates with `Authorization: Bearer`, not `api_key`; its listing is `GET /tests`, not `/test`; `send-evaluated-file` takes `file_id` as a form field, not a file upload; the S3 and SFTP jobs require `return_url` and `file_name`, `ValidateSFTPFile` included; the Warmup `/seed-count` answers with a bare number and `check-domain-dmarc` takes an email address, not a domain; and a failed SMTP login in `test-smtp-configuration` comes back as an HTTP 500.
+- **`ExportSFTPFile` sends `export_path`**, not the `export_bucket` that `ExportS3File` sends.
+- **`{"success": false}` on an HTTP 200 is a failure.** The API answers an unknown bulk file id that way. `HttpErrors.SuccessMeansFailure` is the check, applied in `ReadUsableBody`.
+- **`ZeroBounceWarmup` is a separate client for the Warmup API**, a different product with its own host and its own team-scoped key. It is not part of `ZeroBounce` and takes its own handler for tests.
 - **`RecordedRequest.RawUri` un-escapes for display.** It comes from `Uri.ToString()`, which turns `%20` back into a space. Assert on `EscapedUri` (`Uri.AbsoluteUri`) when a test is about percent-encoding.
 - **Column indexes.** `SendFileOptions` name, gender, and IP columns default to `0`, and `0` means the field is left out. The email column is required and is sent as given, including `0`. `ValidateS3FileOptions.EmailAddressColumn` and `ScoreS3FileOptions.EmailAddressColumn` are `int?`: when set, `0` is sent. Bulk finder, domain search, and list evaluator reject a column below `1`.
 - **Optional parameters are omitted when unset.** `Timeout`, `ActivityData`, `VerifyPlus`, `AllowPhase2`, `DownloadType`, and `HasHeaderRow` (`bool?` on finder, domain search, and S3) are not sent until the caller sets them. Explicit `false` is sent as `false`.
@@ -40,7 +56,12 @@ Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It 
 - **`ValidateBatch` uses `api.zerobounce.net`**, not `bulkapi.zerobounce.net`.
 - **Timeouts.** Single `Validate` accepts 3–60 seconds. `ValidateBatch` accepts 10–120 seconds. An out-of-range value is a failure callback and no request is sent.
 - **Failures use the failure callback**, not exceptions, except `Initialize` (empty API key, or a base URL that is not `https://`), which throws `ZBClientException`. The message must be short: no raw HTML, no megabyte body, no Newtonsoft parse text, and no `Error: Error:` prefix. An account-level `ValidateBatch` error (`email_address` `all`) is a failure callback. A per-address error stays on the success result.
-- **Tests replace `_client`.** It is `protected`. Subclass `ZeroBounce` in the test and assign an `HttpClient` with a fake handler. Do not call the live API from the default test run.
+- **Tests replace `_client`.** It is `protected`. Subclass `ZeroBounce` in the test and assign an `HttpClient` with a fake handler. Do not call the live API from `ZeroBounceTests`; `ZeroBounceLiveApi` is the separate, opt-in suite.
+- **Errors carry the HTTP status.** The failure callback still takes a `string`, and `LastApiError` on both clients carries the same message with the status, so callers can tell a Cloudflare 403 from an API 400/404 and a Warmup 429. It is set synchronously, just before the callback runs.
+
+## Releasing
+
+**Run the live suite by hand before every release.** The offline suite proves the SDK sends what we think it sends; only the live suite proves the API accepts it. Run it with real keys, including `ZEROBOUNCE_LIVE_SPEND=1` and `ZEROBOUNCE_LIVE_CHANGES=1`, and do not release on a failure.
 - The default client sends `User-Agent: ZeroBounceSDK/{PackageVersion}`, times out after 120 seconds, and does not follow redirects.
 - Match the surrounding style. Do not reformat unrelated code.
 
