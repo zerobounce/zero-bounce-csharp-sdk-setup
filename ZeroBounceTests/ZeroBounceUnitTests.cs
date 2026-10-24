@@ -169,6 +169,36 @@ public class Tests
     }
 
     [Test]
+    public void ScoreEmail()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""email"": ""mark@gmail.com"",
+            ""score"": 10
+        }");
+        ZeroBounceTest.Instance.ScoreEmail("mark@gmail.com",
+            response =>
+            {
+                Assert.That(response.Email, Is.EqualTo("mark@gmail.com"));
+                Assert.That(response.Score, Is.EqualTo(10));
+            },
+            error => Assert.Fail(error)
+        );
+
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""email"": ""mark@gmail.com"",
+            ""score"": 10
+        }");
+        ZeroBounceTest.Instance.ScoreEmailPost("mark@gmail.com",
+            response =>
+            {
+                Assert.That(response.Email, Is.EqualTo("mark@gmail.com"));
+                Assert.That(response.Score, Is.EqualTo(10));
+            },
+            error => Assert.Fail(error)
+        );
+    }
+
+    [Test]
     public void GetActivity()
     {
         ZeroBounceTest.Instance.MockResponse(@"{
@@ -227,6 +257,65 @@ public class Tests
             {
                 Assert.Fail(error);
             }
+        );
+    }
+
+    [Test]
+    public void ValidateAiAgentMailboxValid()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""address"": ""agent@example.com"",
+            ""status"": ""valid"",
+            ""sub_status"": ""ai_agent_mailbox""
+        }");
+
+        ZeroBounceTest.Instance.Validate("agent@example.com", "127.0.0.1",
+            response =>
+            {
+                Assert.That(response.Status, Is.EqualTo(ZBValidateStatus.Valid));
+                Assert.That(response.SubStatus, Is.EqualTo(ZBValidateSubStatus.AiAgentMailbox));
+            },
+            error => { Assert.Fail(error); }
+        );
+    }
+
+    [Test]
+    public void ValidateAiAgentMailboxCatchAll()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""address"": ""agent@example.com"",
+            ""status"": ""catch-all"",
+            ""sub_status"": ""ai_agent_mailbox""
+        }");
+
+        ZeroBounceTest.Instance.Validate("agent@example.com", "127.0.0.1",
+            response =>
+            {
+                Assert.That(response.SubStatus, Is.EqualTo(ZBValidateSubStatus.AiAgentMailbox));
+            },
+            error => { Assert.Fail(error); }
+        );
+    }
+
+    [Test]
+    public void ValidateUnknownSubStatusFallsBackToNone()
+    {
+        // ZBValidateSubStatusConverter.ReadJson has a default branch returning
+        // None, so a sub_status added to the API after this SDK shipped parses
+        // to None instead of throwing.
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""address"": ""future@example.com"",
+            ""status"": ""valid"",
+            ""sub_status"": ""some_future_sub_status""
+        }");
+
+        ZeroBounceTest.Instance.Validate("future@example.com", "127.0.0.1",
+            response =>
+            {
+                Assert.That(response.Status, Is.EqualTo(ZBValidateStatus.Valid));
+                Assert.That(response.SubStatus, Is.EqualTo(ZBValidateSubStatus.None));
+            },
+            error => { Assert.Fail(error); }
         );
     }
 
@@ -608,5 +697,68 @@ public class Tests
             if (File.Exists(path))
                 File.Delete(path);
         }
+    }
+
+    [Test]
+    public void SendEmailFinderFileTargetsBulkApiEmailFinder()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""success"": true,
+            ""file_id"": ""abc-def"",
+            ""file_name"": ""finder.csv"",
+            ""message"": ""File Accepted""
+        }");
+        var path = Path.Combine(Path.GetTempPath(), "zb_finder.csv");
+        File.WriteAllText(path, "domain,name\nacme.com,Jane");
+        try
+        {
+            ZeroBounceTest.Instance.SendEmailFinderFile(
+                path,
+                1,
+                null,
+                _ => { },
+                Assert.Fail);
+            Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/email-finder/sendfile"));
+        }
+        finally
+        {
+            if (File.Exists(path))
+                File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void ValidateS3FilePostsToBulkRoot()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"{
+            ""success"": true,
+            ""file_id"": ""s3-job"",
+            ""message"": ""File Accepted""
+        }");
+        ZeroBounceTest.Instance.ValidateS3File(
+            new ZeroBounce.ValidateS3FileOptions { FileName = "bucket/key.csv" },
+            _ => { },
+            Assert.Fail);
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/validateS3file"));
+    }
+
+    [Test]
+    public void ListS3FilesGetsBulkRoot()
+    {
+        ZeroBounceTest.Instance.MockResponse(@"[
+            {""name"":""uploads/list.csv"",""size"":100,""last_modified"":""2024-01-01T00:00:00Z""}
+        ]");
+        ZeroBounceTest.Instance.ListS3Files(
+            "my-bucket",
+            "list",
+            entries =>
+            {
+                Assert.That(entries, Has.Count.EqualTo(1));
+                Assert.That(entries[0].Name, Is.EqualTo("uploads/list.csv"));
+            },
+            Assert.Fail);
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/listS3files"));
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bucket=my-bucket"));
+        Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("search=list"));
     }
 }

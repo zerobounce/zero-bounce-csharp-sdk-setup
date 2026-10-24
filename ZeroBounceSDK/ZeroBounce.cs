@@ -1,15 +1,17 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace ZeroBounceSDK
 {
-    public class ZeroBounce
+    public partial class ZeroBounce
     {
         protected static readonly ZeroBounce _instance = new ZeroBounce();
 
@@ -28,9 +30,25 @@ namespace ZeroBounceSDK
         private string _apiKey;
         private string _apiBaseUrl = ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL);
 
+        private static readonly string PackageVersionValue = ReadPackageVersion();
+
+        private static string ReadPackageVersion()
+        {
+            var attributes = typeof(ZeroBounce).Assembly.GetCustomAttributes(typeof(AssemblyMetadataAttribute), false);
+            foreach (AssemblyMetadataAttribute attribute in attributes)
+            {
+                if (attribute.Key == "ZeroBounce.PackageVersion" && !string.IsNullOrEmpty(attribute.Value))
+                    return attribute.Value;
+            }
+            return "0.0.0";
+        }
+
         private static HttpClient CreateHttpClient()
         {
-            return new HttpClient { Timeout = TimeSpan.FromSeconds(120) };
+            var handler = new HttpClientHandler { AllowAutoRedirect = false };
+            var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
+            client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "ZeroBounceSDK/" + PackageVersionValue);
+            return client;
         }
 
         private static void RequireHttpsUrl(string url)
@@ -103,12 +121,58 @@ namespace ZeroBounceSDK
         public void Validate(string email, string ipAddress, Action<ZBValidateResponse> successCallback,
             Action<string> failureCallback)
         {
-            if (InvalidApiKey(failureCallback)) return;
+            Validate(email, ipAddress, null, successCallback, failureCallback);
+        }
 
-            _sendRequest(
-                _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email) + "&ip_address=" + Enc(ipAddress ?? ""),
-                successCallback,
-                failureCallback).Wait(); 
+        public void Validate(string email, string ipAddress, ZBValidateOptions options,
+            Action<ZBValidateResponse> successCallback, Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+            if (RejectTimeout(options?.Timeout, false, failureCallback)) return;
+            if (RejectCallbackUrl(options, failureCallback)) return;
+
+            if (options != null && options.UsePost)
+            {
+                var form = new Dictionary<string, string>
+                {
+                    { "api_key", _apiKey },
+                    { "email", email },
+                    { "ip_address", ipAddress ?? "" }
+                };
+                if (options.Timeout.HasValue)
+                    form["timeout"] = options.Timeout.Value.ToString();
+                if (options.ActivityData.HasValue)
+                    form["activity_data"] = options.ActivityData.Value ? "true" : "false";
+                if (options.VerifyPlus.HasValue)
+                    form["verify_plus"] = options.VerifyPlus.Value ? "true" : "false";
+                if (options.DomainInfo.HasValue)
+                    form["domain_info"] = options.DomainInfo.Value ? "true" : "false";
+                if (options.GreylistProcessing.HasValue)
+                    form["greylist_processing"] = options.GreylistProcessing.Value ? "true" : "false";
+                if (options.CallbackUrl != null)
+                    form["callback_url"] = options.CallbackUrl;
+                _sendFormPostRequest(_apiBaseUrl + "/validate", form, successCallback, failureCallback).Wait();
+                return;
+            }
+
+            var query = _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email) + "&ip_address=" + Enc(ipAddress ?? "");
+            if (options != null)
+            {
+                if (options.Timeout.HasValue)
+                    query += "&timeout=" + Enc(options.Timeout.Value.ToString());
+                if (options.ActivityData.HasValue)
+                    query += "&activity_data=" + Enc(options.ActivityData.Value ? "true" : "false");
+                if (options.VerifyPlus.HasValue)
+                    query += "&verify_plus=" + Enc(options.VerifyPlus.Value ? "true" : "false");
+                if (options.DomainInfo.HasValue)
+                    query += "&domain_info=" + Enc(options.DomainInfo.Value ? "true" : "false");
+                if (options.GreylistProcessing.HasValue)
+                    query += "&greylist_processing=" + Enc(options.GreylistProcessing.Value ? "true" : "false");
+                if (options.CallbackUrl != null)
+                    query += "&callback_url=" + Enc(options.CallbackUrl);
+            }
+
+            _sendRequest(query, successCallback, failureCallback).Wait();
         }
 
         /// <param name="emailBatch">A list of ZBValidateEmailRow objects</param>
@@ -117,7 +181,14 @@ namespace ZeroBounceSDK
         public void ValidateBatch(List<ZBValidateEmailRow> emailBatch, Action<ZBValidateBatchResponse> successCallback,
             Action<string> failureCallback)
         {
+            ValidateBatch(emailBatch, null, successCallback, failureCallback);
+        }
+
+        public void ValidateBatch(List<ZBValidateEmailRow> emailBatch, ZBValidateOptions options,
+            Action<ZBValidateBatchResponse> successCallback, Action<string> failureCallback)
+        {
             if (InvalidApiKey(failureCallback)) return;
+            if (RejectTimeout(options?.Timeout, true, failureCallback)) return;
             if (emailBatch == null || emailBatch.Count == 0)
             {
                 failureCallback("Empty parameter: email_batch");
@@ -133,6 +204,13 @@ namespace ZeroBounceSDK
             }
 
             var requestData = new ZBValidateEmailRequest { ApiKey = _apiKey, EmailBatch = emailBatch };
+            if (options != null)
+            {
+                if (options.Timeout.HasValue)
+                    requestData.Timeout = options.Timeout.Value.ToString(CultureInfo.InvariantCulture);
+                if (options.ActivityData.HasValue) requestData.ActivityData = options.ActivityData;
+                if (options.VerifyPlus.HasValue) requestData.VerifyPlus = options.VerifyPlus;
+            }
             var json = JsonConvert.SerializeObject(requestData);
 
             _sendJsonRequest(
@@ -181,6 +259,33 @@ namespace ZeroBounceSDK
                 + "&email=" + Enc(email),
                 successCallback,
                 failureCallback).Wait();
+        }
+
+        /// <summary>Real-time AI scoring for a single email (GET /scoring).</summary>
+        public void ScoreEmail(string email, Action<ZBScoreEmailResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            _sendRequest(
+                _apiBaseUrl + "/scoring?api_key=" + Enc(_apiKey)
+                + "&email=" + Enc(email),
+                successCallback,
+                failureCallback).Wait();
+        }
+
+        /// <summary>Real-time AI scoring for a single email (POST /scoring, form-encoded).</summary>
+        public void ScoreEmailPost(string email, Action<ZBScoreEmailResponse> successCallback,
+            Action<string> failureCallback)
+        {
+            if (InvalidApiKey(failureCallback)) return;
+
+            var form = new Dictionary<string, string>
+            {
+                { "api_key", _apiKey },
+                { "email", email }
+            };
+            _sendFormPostRequest(_apiBaseUrl + "/scoring", form, successCallback, failureCallback).Wait();
         }
 
         /// <param name="domain">The email domain for which to find the email format.</param>
@@ -505,27 +610,26 @@ namespace ZeroBounceSDK
                     content.Add(new StringContent(options.EmailAddressColumn.ToString()), "email_address_column");
                     if (options.ReturnUrl != null)
                         content.Add(new StringContent(options.ReturnUrl), "return_url");
-                    if (options.FirstNameColumn > 0)
-                        content.Add(new StringContent(options.FirstNameColumn.ToString()), "first_name_column");
-                    if (options.LastNameColumn > 0)
-                        content.Add(new StringContent(options.LastNameColumn.ToString()), "last_name_column");
-                    if (options.GenderColumn > 0)
-                        content.Add(new StringContent(options.GenderColumn.ToString()), "gender_column");
-                    if (options.IpAddressColumn > 0)
-                        content.Add(new StringContent(options.IpAddressColumn.ToString()), "ip_address_column");
-                    if (options.HasHeaderRow)
-                        content.Add(new StringContent("true"), "has_header_row");
-                    if (options.RemoveDuplicate)
-                        content.Add(new StringContent("true"), "remove_duplicate");
-                    if (!scoring && options.AllowPhase2.HasValue)
-                        content.Add(new StringContent(options.AllowPhase2.Value ? "true" : "false"), "allow_phase_2");
+                    if (!scoring)
+                    {
+                        if (options.FirstNameColumn > 0)
+                            content.Add(new StringContent(options.FirstNameColumn.ToString()), "first_name_column");
+                        if (options.LastNameColumn > 0)
+                            content.Add(new StringContent(options.LastNameColumn.ToString()), "last_name_column");
+                        if (options.GenderColumn > 0)
+                            content.Add(new StringContent(options.GenderColumn.ToString()), "gender_column");
+                        if (options.IpAddressColumn > 0)
+                            content.Add(new StringContent(options.IpAddressColumn.ToString()), "ip_address_column");
+                        if (options.AllowPhase2.HasValue)
+                            content.Add(new StringContent(options.AllowPhase2.Value ? "true" : "false"), "allow_phase_2");
+                    }
+                    content.Add(new StringContent(options.HasHeaderRow ? "true" : "false"), "has_header_row");
+                    content.Add(new StringContent(options.RemoveDuplicate ? "true" : "false"), "remove_duplicate");
                 }
 
                 var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendfile";
                 var result = await _client.PostAsync(url, content);
-                var responseString = await result.Content.ReadAsStringAsync();
-                var response = JsonConvert.DeserializeObject<ZBSendFileResponse>(responseString);
-                successCallback(response);
+                await DispatchJson(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
@@ -609,51 +713,7 @@ namespace ZeroBounceSDK
             {
                 var url = BuildGetFileUrl(BulkApiBaseUrl, scoring, _apiKey, fileId, getFileOptions);
                 var response = await _client.GetAsync(url);
-                var contentType = response.Content.Headers.ContentType?.MediaType ?? "";
-
-                if (contentType.Contains("application/json"))
-                {
-                    var responseString = await response.Content.ReadAsStringAsync();
-                    var jsonResponse = JsonConvert.DeserializeObject<ZBGetFileResponse>(responseString);
-                    var isError = jsonResponse != null &&
-                        (!jsonResponse.Success ||
-                         !string.IsNullOrEmpty(jsonResponse.Message) ||
-                         !string.IsNullOrEmpty(jsonResponse.Error) ||
-                         !string.IsNullOrEmpty(jsonResponse.ErrorMessage));
-                    if (isError)
-                    {
-                        failureCallback(
-                            jsonResponse.Message
-                            ?? jsonResponse.ErrorMessage
-                            ?? jsonResponse.Error
-                            ?? "Request not processed successfully.");
-                        return;
-                    }
-                    successCallback(jsonResponse ?? new ZBGetFileResponse());
-                    return;
-                }
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    var errBody = await response.Content.ReadAsStringAsync();
-                    failureCallback(string.IsNullOrWhiteSpace(errBody)
-                        ? ((int)response.StatusCode).ToString()
-                        : errBody);
-                    return;
-                }
-
-                var dirPath = Path.GetDirectoryName(localDownloadPath);
-                if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
-                using (var stream = await response.Content.ReadAsStreamAsync())
-                using (var fileStream = new FileStream(localDownloadPath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
-                {
-                    await stream.CopyToAsync(fileStream);
-                }
-                successCallback(new ZBGetFileResponse
-                {
-                    Success = true,
-                    LocalFilePath = Path.GetFullPath(localDownloadPath)
-                });
+                await DeliverDownloadedFile(response, localDownloadPath, successCallback, failureCallback);
             }
             catch (Exception e)
             {
@@ -691,6 +751,25 @@ namespace ZeroBounceSDK
                 failureCallback).Wait();
         }
 
+        /// <summary>
+        /// The detail of the failure the most recent callback on this client
+        /// reported: the same short message, plus the HTTP status.
+        /// <para>
+        /// It is set synchronously, immediately before the failure callback
+        /// runs, so reading it from inside that callback always describes the
+        /// call that is failing. Use one client per key and per thread, as the
+        /// rest of this SDK already asks.
+        /// </para>
+        /// </summary>
+        public ZBApiError LastApiError { get; private set; }
+
+        /// <summary>Records the detail, then hands the short message to the caller.</summary>
+        private void Fail(Action<string> failureCallback, string message, int statusCode)
+        {
+            LastApiError = new ZBApiError(message, statusCode);
+            failureCallback(message);
+        }
+
         private bool InvalidApiKey(Action<string> failureCallback)
         {
             if (_apiKey != null) return false;
@@ -699,19 +778,78 @@ namespace ZeroBounceSDK
             return true;
         }
 
+        private static bool RejectTimeout(int? timeout, bool batch, Action<string> failureCallback)
+        {
+            if (!timeout.HasValue)
+                return false;
+            var value = timeout.Value;
+            if (batch)
+            {
+                if (value >= 10 && value <= 120)
+                    return false;
+                failureCallback("Invalid parameter: timeout (must be between 10 and 120 seconds)");
+                return true;
+            }
+            if (value >= 3 && value <= 60)
+                return false;
+            failureCallback("Invalid parameter: timeout (must be between 3 and 60 seconds)");
+            return true;
+        }
+
+        /// <summary>
+        /// The callback is where the greylist retry posts its result, so it is
+        /// meaningless — and rejected by the API — without the retry itself.
+        /// Checked before any request is sent.
+        /// </summary>
+        private static bool RejectCallbackUrl(ZBValidateOptions options, Action<string> failureCallback)
+        {
+            if (options?.CallbackUrl == null)
+                return false;
+            if (string.IsNullOrWhiteSpace(options.CallbackUrl))
+            {
+                failureCallback("Empty parameter: callback_url");
+                return true;
+            }
+            if (options.GreylistProcessing != true)
+            {
+                failureCallback("Invalid parameter: callback_url requires greylist_processing to be true");
+                return true;
+            }
+            return false;
+        }
+
         private async Task _sendRequest<T>(string url, Action<T> successCallback, Action<string> failureCallback)
             where T : ZBResponse
         {
             try
             {
-                var responseString = await _client.GetStringAsync(url);
-                //Debug.WriteLine("sendRequest response: "+responseString);
-                var response = JsonConvert.DeserializeObject<T>(responseString);
-                successCallback(response);
+                var result = await _client.GetAsync(url);
+                await DispatchJson(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
+            }
+        }
+
+        private async Task _sendListRequest<T>(string url, Action<List<T>> successCallback, Action<string> failureCallback)
+        {
+            try
+            {
+                var result = await _client.GetAsync(url);
+                var body = await ReadUsableBody(result, failureCallback);
+                if (body == null)
+                    return;
+                var response = JsonConvert.DeserializeObject<List<T>>(body);
+                successCallback(response ?? new List<T>());
+            }
+            catch (JsonException)
+            {
+                failureCallback("ZeroBounce returned a response that is not valid JSON.");
+            }
+            catch (Exception e)
+            {
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
             }
         }
 
@@ -722,14 +860,152 @@ namespace ZeroBounceSDK
             {
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
                 var result = await _client.PostAsync(url, content);
-                string responseString = await result.Content.ReadAsStringAsync();
-                var response = JsonConvert.DeserializeObject<T>(responseString);
-                successCallback(response);
+                await DispatchJson(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
             }
+        }
+
+        private async Task _sendFormPostRequest<T>(string url, Dictionary<string, string> form,
+            Action<T> successCallback, Action<string> failureCallback)
+            where T : ZBResponse
+        {
+            try
+            {
+                var content = new FormUrlEncodedContent(form);
+                var result = await _client.PostAsync(url, content);
+                await DispatchJson(result, successCallback, failureCallback);
+            }
+            catch (Exception e)
+            {
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
+            }
+        }
+
+        private async Task DispatchJson<T>(HttpResponseMessage result, Action<T> successCallback, Action<string> failureCallback)
+            where T : ZBResponse
+        {
+            var status = (int)result.StatusCode;
+            var body = await ReadUsableBody(result, failureCallback);
+            if (body == null)
+                return;
+            try
+            {
+                var response = JsonConvert.DeserializeObject<T>(body);
+                if (response == null)
+                {
+                    failureCallback(RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey));
+                    return;
+                }
+                if (response is ZBValidateBatchResponse batch && ReportAccountBatchError(batch, failureCallback))
+                    return;
+                successCallback(response);
+            }
+            catch (JsonException)
+            {
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey));
+            }
+        }
+
+        private bool ReportAccountBatchError(ZBValidateBatchResponse batch, Action<string> failureCallback)
+        {
+            if (batch.Errors == null)
+                return false;
+            foreach (var item in batch.Errors)
+            {
+                if (item == null || !string.Equals(item.EmailAddress, "all", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                var message = string.IsNullOrEmpty(item.Error)
+                    ? "Invalid API Key or your account ran out of credits"
+                    : HttpErrors.StripErrorPrefix(item.Error);
+                failureCallback(RedactApiKey(message, _apiKey));
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Returns the body when it can be parsed as an API payload. On HTML, an empty body,
+        /// or a non-success status, reports a short error and returns null.
+        /// </summary>
+        private async Task<string> ReadUsableBody(HttpResponseMessage result, Action<string> failureCallback)
+        {
+            var body = result.Content == null ? "" : await result.Content.ReadAsStringAsync();
+            var media = result.Content?.Headers.ContentType?.MediaType ?? "";
+            var status = (int)result.StatusCode;
+            if (status > 299 || HttpErrors.ContentTypeIsHtml(media) || HttpErrors.BodyLooksLikeHtml(body) || string.IsNullOrWhiteSpace(body))
+            {
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
+                return null;
+            }
+            // LIVE: {"success": false} on an HTTP 200 is a failure, not a
+            // result. The API answers an unknown bulk file id that way.
+            if (HttpErrors.SuccessMeansFailure(body))
+            {
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
+                return null;
+            }
+            return body;
+        }
+
+        private async Task DeliverDownloadedFile(HttpResponseMessage response, string localDownloadPath,
+            Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
+        {
+            var bytes = response.Content == null
+                ? new byte[0]
+                : await response.Content.ReadAsByteArrayAsync();
+            var body = Encoding.UTF8.GetString(bytes);
+            var media = response.Content?.Headers.ContentType?.MediaType ?? "";
+            var status = (int)response.StatusCode;
+
+            if (status > 299 || HttpErrors.ContentTypeIsHtml(media) || HttpErrors.BodyLooksLikeHtml(body))
+            {
+                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey));
+                return;
+            }
+
+            if (media.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                ZBGetFileResponse jsonResponse;
+                try
+                {
+                    jsonResponse = JsonConvert.DeserializeObject<ZBGetFileResponse>(body);
+                }
+                catch (JsonException)
+                {
+                    failureCallback(RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey));
+                    return;
+                }
+                var isError = jsonResponse != null &&
+                    (!jsonResponse.Success ||
+                     !string.IsNullOrEmpty(jsonResponse.Message) ||
+                     !string.IsNullOrEmpty(jsonResponse.Error) ||
+                     !string.IsNullOrEmpty(jsonResponse.ErrorMessage));
+                if (isError || jsonResponse == null)
+                {
+                    var message = jsonResponse == null
+                        ? HttpErrors.MessageFromBody(body, status)
+                        : (jsonResponse.Message
+                           ?? jsonResponse.ErrorMessage
+                           ?? jsonResponse.Error
+                           ?? "Request not processed successfully.");
+                    failureCallback(RedactApiKey(HttpErrors.StripErrorPrefix(message), _apiKey));
+                    return;
+                }
+                successCallback(jsonResponse);
+                return;
+            }
+
+            var dirPath = Path.GetDirectoryName(localDownloadPath);
+            if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
+            File.WriteAllBytes(localDownloadPath, bytes);
+            successCallback(new ZBGetFileResponse
+            {
+                Success = true,
+                LocalFilePath = Path.GetFullPath(localDownloadPath)
+            });
         }
     }
 }

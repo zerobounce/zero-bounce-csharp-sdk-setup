@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The opt-in live API suite. It is NOT in ZeroBounceCSharpSDKSetup.sln, so
+    `dotnet build` and `dotnet test` at the repo root never build or run it.
+    Build and run it explicitly:
+
+      dotnet run (project ZeroBounceLiveApi)
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>ZeroBounceLiveApi</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../ZeroBounceSDK/ZeroBounceSDK.csproj" />
+  </ItemGroup>
+
+</Project>
