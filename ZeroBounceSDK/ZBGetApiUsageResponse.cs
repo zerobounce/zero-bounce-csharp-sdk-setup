@@ -145,6 +145,14 @@ namespace ZeroBounceSDK
         [JsonProperty("sub_status_role_based_accept_all")]
         public int SubStatusRoleBasedAcceptAll;
 
+        /// <summary>Total emails with a leading period that was removed</summary>
+        [JsonProperty("sub_status_leading_period_removed")]
+        public int SubStatusLeadingPeriodRemoved;
+
+        /// <summary>Total number of times the API has a sub status of "alias_address"</summary>
+        [JsonProperty("sub_status_alias_address")]
+        public int SubStatusAliasAddress;
+
         /// Start date of query
         [JsonConverter(typeof(CustomDateTimeConverter))]
         [JsonProperty("start_date")] public DateTime StartDate;
