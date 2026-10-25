@@ -30,13 +30,28 @@ namespace ZeroBounceSDK
             public string WebhookUrl;
         }
 
-        /// <summary>The documented filters of the test list.</summary>
+        /// <summary>
+        /// The documented filters of the test list.
+        /// <para>
+        /// <see cref="Status"/> is "running" or "finished".
+        /// <see cref="PageSize"/> is 1-100. <see cref="CreatedAfter"/> and
+        /// <see cref="CreatedBefore"/> are sent as given.
+        /// </para>
+        /// </summary>
         public class ListInboxPlacementTestsOptions
         {
             public string Status;
             public int? Page;
             public int? PageSize;
+            public string CreatedAfter;
+            public string CreatedBefore;
         }
+
+        /// <summary>The values the test list's status filter accepts.</summary>
+        private static readonly string[] InboxPlacementStatuses = { "running", "finished" };
+
+        /// <summary>The test types the tester accepts: 1, 2 and 3.</summary>
+        private static readonly int[] InboxPlacementTestTypes = { 1, 2, 3 };
 
         /// <summary>Seed providers available for new tests (GET /api/ipt/providers).</summary>
         public void GetInboxPlacementProviders(Action<JObject> successCallback, Action<string> failureCallback)
@@ -50,13 +65,35 @@ namespace ZeroBounceSDK
             _InboxPlacementRequest(HttpMethod.Get, "/test-types", null, null, successCallback, failureCallback);
         }
 
-        /// <summary>Starts a test and returns its seed list (POST /api/ipt/test).</summary>
+        /// <summary>
+        /// Starts a test and returns its seed list (POST /api/ipt/test).
+        /// <para>
+        /// The name is at most 64 characters, the test type is 1, 2 or 3, and
+        /// type 1 (send your own campaign to the seeds) needs the address you
+        /// will send from, so senderEmail is required with it.
+        /// </para>
+        /// </summary>
         public void CreateInboxPlacementTest(string name, CreateInboxPlacementTestOptions options,
             Action<JObject> successCallback, Action<string> failureCallback)
         {
             if (string.IsNullOrWhiteSpace(name))
             {
                 failureCallback("Empty parameter: name");
+                return;
+            }
+            if (name.Length > 64)
+            {
+                failureCallback("Invalid parameter: name (must be at most 64 characters)");
+                return;
+            }
+            if (options?.TestType != null && Array.IndexOf(InboxPlacementTestTypes, options.TestType.Value) < 0)
+            {
+                failureCallback("Invalid parameter: testType (must be 1, 2 or 3)");
+                return;
+            }
+            if (options?.TestType == 1 && string.IsNullOrWhiteSpace(options.SenderEmail))
+            {
+                failureCallback("Empty parameter: senderEmail is required when testType is 1");
                 return;
             }
 
@@ -82,16 +119,35 @@ namespace ZeroBounceSDK
             _InboxPlacementRequest(HttpMethod.Get, "/test/" + segment, null, null, successCallback, failureCallback);
         }
 
-        /// <summary>The account's tests (GET /api/ipt/test).</summary>
+        /// <summary>The account's tests (GET /api/ipt/tests).</summary>
         public void ListInboxPlacementTests(ListInboxPlacementTestsOptions options,
             Action<JObject> successCallback, Action<string> failureCallback)
         {
             var query = "";
             if (options != null)
             {
-                if (!string.IsNullOrWhiteSpace(options.Status)) query += "&status=" + Enc(options.Status);
+                if (!string.IsNullOrWhiteSpace(options.Status))
+                {
+                    if (Array.IndexOf(InboxPlacementStatuses, options.Status.Trim().ToLowerInvariant()) < 0)
+                    {
+                        failureCallback("Invalid parameter: status (must be running or finished)");
+                        return;
+                    }
+                    query += "&status=" + Enc(options.Status.Trim().ToLowerInvariant());
+                }
+                if (options.PageSize.HasValue && (options.PageSize.Value < 1 || options.PageSize.Value > 100))
+                {
+                    failureCallback("Invalid parameter: page_size (must be between 1 and 100)");
+                    return;
+                }
                 if (options.Page.HasValue) query += "&page=" + Enc(options.Page.Value.ToString());
-                if (options.PageSize.HasValue) query += "&pageSize=" + Enc(options.PageSize.Value.ToString());
+                // LIVE: the page size is page_size. Sent as pageSize it is
+                // silently ignored and the whole list comes back.
+                if (options.PageSize.HasValue) query += "&page_size=" + Enc(options.PageSize.Value.ToString());
+                if (!string.IsNullOrWhiteSpace(options.CreatedAfter))
+                    query += "&createdAfter=" + Enc(options.CreatedAfter.Trim());
+                if (!string.IsNullOrWhiteSpace(options.CreatedBefore))
+                    query += "&createdBefore=" + Enc(options.CreatedBefore.Trim());
             }
             // LIVE: the listing is GET /tests (plural). /test is the
             // single-test path and answers Method "GET" not allowed.
@@ -159,10 +215,13 @@ namespace ZeroBounceSDK
                     request.Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
 
                 var result = await _client.SendAsync(request);
-                var payload = await ReadUsableBody(result, failureCallback);
+                // LIVE: DELETE /test/{id} answers HTTP 204 with an empty body.
+                // That is the success, so it must not be read as the empty
+                // response ReadUsableBody normally rejects.
+                var allowEmptyBody = method == HttpMethod.Delete;
+                var payload = await ReadUsableBody(result, failureCallback, allowEmptyBody);
                 if (payload == null)
                     return;
-                // DELETE answers with an empty body.
                 if (payload.Trim().Length == 0)
                 {
                     successCallback(new JObject());

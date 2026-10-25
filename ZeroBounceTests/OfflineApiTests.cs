@@ -435,7 +435,14 @@ public class OfflineApiTests
         var csv = WriteCsv();
         try
         {
-            var finder = new ZeroBounce.EmailFinderSendFileOptions { HasHeaderRow = true, FirstNameColumn = 0 };
+            // A full name column satisfies the "first name or full name" rule,
+            // and column 0 still means the first name column is left out.
+            var finder = new ZeroBounce.EmailFinderSendFileOptions
+            {
+                HasHeaderRow = true,
+                FirstNameColumn = 0,
+                FullNameColumn = 3
+            };
             var (_, error) = Capture<ZBSendFileResponse>((ok, fail) =>
                 client.SendEmailFinderFile(csv, 1, finder, ok, fail));
             Assert.That(error, Is.Null);
@@ -444,6 +451,7 @@ public class OfflineApiTests
             Assert.That(sent.Path, Is.EqualTo("/email-finder/sendfile"));
             Assert.That(sent.Fields["domain_column"], Is.EqualTo("1"));
             Assert.That(sent.Fields["has_header_row"], Is.EqualTo("true"));
+            Assert.That(sent.Fields["full_name_column"], Is.EqualTo("3"));
             Assert.That(sent.Fields.ContainsKey("first_name_column"), Is.False);
             Assert.That(sent.ApiKey, Is.EqualTo("p3-key"));
 
@@ -551,7 +559,8 @@ public class OfflineApiTests
                 FileName = "inbox.csv",
                 EmailAddressColumn = 0,
                 HasHeaderRow = false,
-                RemoveDuplicate = true
+                RemoveDuplicates = true,
+                ReturnUrl = "https://example.com/done"
             };
             (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ValidateS3File(s3, ok, fail));
             Assert.That(error, Is.Null);
@@ -559,19 +568,30 @@ public class OfflineApiTests
             Assert.That(validated.Method, Is.EqualTo("POST"));
             Assert.That(validated.Path, Is.EqualTo("/validateS3file"));
             Assert.That(validated.Fields["file_name"], Is.EqualTo("inbox.csv"));
+            Assert.That(validated.Fields["return_url"], Is.EqualTo("https://example.com/done"));
             Assert.That(validated.Fields["email_address_column"], Is.EqualTo("0"));
             Assert.That(validated.Fields["has_header_row"], Is.EqualTo("false"));
-            Assert.That(validated.Fields["remove_duplicate"], Is.EqualTo("true"));
-            Assert.That(validated.Fields.ContainsKey("remove_duplicates"), Is.False);
+            Assert.That(validated.Fields["remove_duplicates"], Is.EqualTo("true"));
+            // remove_duplicate (singular) is not a field of this endpoint.
+            Assert.That(validated.Fields.ContainsKey("remove_duplicate"), Is.False);
             Assert.That(validated.Fields.ContainsKey("first_name_column"), Is.False);
 
             api.Clear();
             (_, error) = Capture<ZBSendFileResponse>((ok, fail) =>
-                client.ScoreS3File(new ZeroBounce.ScoreS3FileOptions { FileName = "inbox.csv" }, ok, fail));
+                client.ScoreS3File(new ZeroBounce.ScoreS3FileOptions
+                {
+                    FileName = "inbox.csv",
+                    ReturnUrl = "https://example.com/done"
+                }, ok, fail));
             Assert.That(error, Is.Null);
             var scored = Only(api);
             Assert.That(scored.Path, Is.EqualTo("/scoreS3file"));
+            Assert.That(scored.Fields["file_name"], Is.EqualTo("inbox.csv"));
+            Assert.That(scored.Fields["return_url"], Is.EqualTo("https://example.com/done"));
             Assert.That(scored.Fields.ContainsKey("email_address_column"), Is.False);
+            Assert.That(scored.Fields.ContainsKey("has_header_row"), Is.False);
+            Assert.That(scored.Fields.ContainsKey("remove_duplicate"), Is.False);
+            Assert.That(scored.Fields.ContainsKey("remove_duplicates"), Is.False);
 
             api.Clear();
             (_, error) = Capture<ZBSendFileResponse>((ok, fail) =>
@@ -616,7 +636,8 @@ public class OfflineApiTests
         try
         {
             var (_, error) = Capture<ZBSendFileResponse>((ok, fail) =>
-                client.SendEmailFinderFile(csv, 1, new ZeroBounce.EmailFinderSendFileOptions { HasHeaderRow = false }, ok, fail));
+                client.SendEmailFinderFile(csv, 1,
+                    new ZeroBounce.EmailFinderSendFileOptions { HasHeaderRow = false, FirstNameColumn = 2 }, ok, fail));
             Assert.That(error, Is.Null);
             Assert.That(Only(api).Fields["has_header_row"], Is.EqualTo("false"));
 
@@ -646,7 +667,9 @@ public class OfflineApiTests
             AssertRejected(api, fail => client.ListFilters(false, _ => { }, fail));
             AssertRejected(api, fail => client.EmailFinderDeleteFile("fid", _ => { }, fail));
             AssertRejected(api, fail => client.SendDomainSearchFile(csv, 1, null, _ => { }, fail));
-            AssertRejected(api, fail => client.ValidateS3File(new ZeroBounce.ValidateS3FileOptions { FileName = "a.csv" }, _ => { }, fail));
+            AssertRejected(api, fail => client.ValidateS3File(
+                new ZeroBounce.ValidateS3FileOptions { FileName = "a.csv", ReturnUrl = "https://example.com/done" },
+                _ => { }, fail));
             AssertRejected(api, fail => client.AddFilter("exclude", "domain", "example.com", _ => { }, fail));
             Assert.That(api.Count, Is.EqualTo(0));
 
@@ -718,7 +741,8 @@ public class OfflineApiTests
         try
         {
             var (_, error) = Capture<ZBSendFileResponse>((ok, fail) =>
-                client.SendEmailFinderFile(csv, 1, null, ok, fail));
+                client.SendEmailFinderFile(csv, 1,
+                    new ZeroBounce.EmailFinderSendFileOptions { FirstNameColumn = 2 }, ok, fail));
             Assert.That(error, Is.Not.Null);
             ExpectShort(error!);
             Assert.That(error, Does.Contain("Access denied"));
@@ -1206,12 +1230,25 @@ public class OfflineApiTests
         api.Clear();
 
         (_, error) = Capture<JObject>((ok, fail) => client.ListInboxPlacementTests(
-            new ZeroBounce.ListInboxPlacementTestsOptions { Status = "finished", Page = 1, PageSize = 25 }, ok, fail));
+            new ZeroBounce.ListInboxPlacementTestsOptions
+            {
+                Status = "finished",
+                Page = 1,
+                PageSize = 25,
+                CreatedAfter = "2026-01-01",
+                CreatedBefore = "2026-02-01"
+            }, ok, fail));
         Assert.That(error, Is.Null);
         request = Only(api);
+        Assert.That(request.Path, Is.EqualTo("/api/ipt/tests"));
         Assert.That(request.Fields["status"], Is.EqualTo("finished"));
         Assert.That(request.Fields["page"], Is.EqualTo("1"));
-        Assert.That(request.Fields["pageSize"], Is.EqualTo("25"));
+        // LIVE: the page size is page_size. pageSize is silently ignored and
+        // the whole list comes back.
+        Assert.That(request.Fields["page_size"], Is.EqualTo("25"));
+        Assert.That(request.Fields.ContainsKey("pageSize"), Is.False);
+        Assert.That(request.Fields["createdAfter"], Is.EqualTo("2026-01-01"));
+        Assert.That(request.Fields["createdBefore"], Is.EqualTo("2026-02-01"));
         api.Clear();
 
         (_, error) = Capture<JObject>((ok, fail) => client.ListInboxPlacementTests(null, ok, fail));
@@ -1219,13 +1256,22 @@ public class OfflineApiTests
         request = Only(api);
         Assert.That(request.Fields.ContainsKey("status"), Is.False);
         Assert.That(request.Fields.ContainsKey("page"), Is.False);
+        Assert.That(request.Fields.ContainsKey("page_size"), Is.False);
+        Assert.That(request.Fields.ContainsKey("createdAfter"), Is.False);
+        Assert.That(request.Fields.ContainsKey("createdBefore"), Is.False);
         api.Clear();
 
-        (_, error) = Capture<JObject>((ok, fail) => client.DeleteInboxPlacementTest("a b/c", ok, fail));
-        Assert.That(error, Is.Null);
+        // LIVE: the delete answers HTTP 204 with an empty body, which is the
+        // success and not the empty response the rest of the API never sends.
+        JObject? deleted = null;
+        string? deleteError = null;
+        client.DeleteInboxPlacementTest("a b/c", body => deleted = body, e => deleteError = e);
+        Assert.That(deleteError, Is.Null);
+        Assert.That(deleted, Is.Not.Null);
         request = Only(api);
         Assert.That(request.Method, Is.EqualTo("DELETE"));
         Assert.That(request.EscapedUri, Does.Contain("/api/ipt/test/a%20b%2Fc"));
+        Assert.That(request.Authorization, Is.EqualTo("Bearer ipt-key"));
         api.Clear();
 
         (_, error) = Capture<JObject>((ok, fail) => client.SetInboxPlacementWebhook("https://example.com/ipt", ok, fail));
@@ -1326,6 +1372,341 @@ public class OfflineApiTests
             Assert.That(missingUrl, Does.Contain("return_url"));
         }
         Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ValidateAndScoreS3FileSendTheSameRequiredFieldsAsTheOtherJobs()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "s3-key");
+
+        // LIVE: without return_url validateS3file answers HTTP 400
+        // "Provided return URL is not permitted: None". scoreS3file never sent
+        // the field at all, so the call could not succeed.
+        var (validated, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ValidateS3File(
+            new ZeroBounce.ValidateS3FileOptions
+            {
+                FileName = "lists/leads.csv",
+                ReturnUrl = "https://example.com/done",
+                HasHeaderRow = true,
+                RemoveDuplicates = false,
+                EmailAddressColumn = 1,
+                FirstNameColumn = 2,
+                LastNameColumn = 3,
+                GenderColumn = 4,
+                IpAddressColumn = 5,
+                AllowPhase2 = true
+            }, ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(validated!.FileId, Is.EqualTo("s3-key"));
+        var request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("POST"));
+        Assert.That(request.Host, Is.EqualTo("bulkapi.zerobounce.net"));
+        Assert.That(request.Path, Is.EqualTo("/validateS3file"));
+        Assert.That(request.ApiKey, Is.EqualTo("s3-key"));
+        Assert.That(request.Fields["file_name"], Is.EqualTo("lists/leads.csv"));
+        Assert.That(request.Fields["return_url"], Is.EqualTo("https://example.com/done"));
+        Assert.That(request.Fields["has_header_row"], Is.EqualTo("true"));
+        Assert.That(request.Fields["remove_duplicates"], Is.EqualTo("false"));
+        Assert.That(request.Fields["email_address_column"], Is.EqualTo("1"));
+        Assert.That(request.Fields["first_name_column"], Is.EqualTo("2"));
+        Assert.That(request.Fields["last_name_column"], Is.EqualTo("3"));
+        Assert.That(request.Fields["gender_column"], Is.EqualTo("4"));
+        Assert.That(request.Fields["ip_address_column"], Is.EqualTo("5"));
+        Assert.That(request.Fields["allow_phase_2"], Is.EqualTo("true"));
+        Assert.That(request.Fields.ContainsKey("remove_duplicate"), Is.False);
+        api.Clear();
+
+        var (scored, scoreError) = Capture<ZBSendFileResponse>((ok, fail) => client.ScoreS3File(
+            new ZeroBounce.ScoreS3FileOptions
+            {
+                FileName = "lists/leads.csv",
+                ReturnUrl = "https://example.com/done",
+                HasHeaderRow = false,
+                RemoveDuplicates = true,
+                EmailAddressColumn = 0
+            }, ok, fail));
+        Assert.That(scoreError, Is.Null);
+        Assert.That(scored!.FileId, Is.EqualTo("s3-key"));
+        request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("POST"));
+        Assert.That(request.Path, Is.EqualTo("/scoreS3file"));
+        Assert.That(request.ApiKey, Is.EqualTo("s3-key"));
+        Assert.That(request.Fields["file_name"], Is.EqualTo("lists/leads.csv"));
+        Assert.That(request.Fields["return_url"], Is.EqualTo("https://example.com/done"));
+        Assert.That(request.Fields["has_header_row"], Is.EqualTo("false"));
+        Assert.That(request.Fields["remove_duplicates"], Is.EqualTo("true"));
+        // The email column is int?, so an explicit 0 is sent.
+        Assert.That(request.Fields["email_address_column"], Is.EqualTo("0"));
+        Assert.That(request.Fields.ContainsKey("remove_duplicate"), Is.False);
+    }
+
+    [Test]
+    public void ValidateAndScoreS3FileRejectAMissingFileNameOrReturnUrl()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "s3-key");
+        var done = "https://example.com/done";
+
+        var (_, noOptions) = Capture<ZBSendFileResponse>((ok, fail) => client.ValidateS3File(null, ok, fail));
+        Assert.That(noOptions, Does.Contain("file_name"));
+
+        var (_, noName) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.ValidateS3File(new ZeroBounce.ValidateS3FileOptions { ReturnUrl = done }, ok, fail));
+        Assert.That(noName, Does.Contain("file_name"));
+
+        var (_, blankName) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.ValidateS3File(new ZeroBounce.ValidateS3FileOptions { FileName = "  ", ReturnUrl = done }, ok, fail));
+        Assert.That(blankName, Does.Contain("file_name"));
+
+        var (_, noUrl) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.ValidateS3File(new ZeroBounce.ValidateS3FileOptions { FileName = "f.csv" }, ok, fail));
+        Assert.That(noUrl, Does.Contain("return_url"));
+
+        var (_, blankUrl) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.ValidateS3File(new ZeroBounce.ValidateS3FileOptions { FileName = "f.csv", ReturnUrl = " " }, ok, fail));
+        Assert.That(blankUrl, Does.Contain("return_url"));
+
+        var (_, scoreNoOptions) = Capture<ZBSendFileResponse>((ok, fail) => client.ScoreS3File(null, ok, fail));
+        Assert.That(scoreNoOptions, Does.Contain("file_name"));
+
+        var (_, scoreNoName) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.ScoreS3File(new ZeroBounce.ScoreS3FileOptions { ReturnUrl = done }, ok, fail));
+        Assert.That(scoreNoName, Does.Contain("file_name"));
+
+        var (_, scoreNoUrl) = Capture<ZBSendFileResponse>((ok, fail) =>
+            client.ScoreS3File(new ZeroBounce.ScoreS3FileOptions { FileName = "f.csv" }, ok, fail));
+        Assert.That(scoreNoUrl, Does.Contain("return_url"));
+
+        Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ValidateAndScoreS3FileReportAnErrorBody()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "success-false-s3");
+        var done = "https://example.com/done";
+
+        var (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ValidateS3File(
+            new ZeroBounce.ValidateS3FileOptions { FileName = "f.csv", ReturnUrl = done }, ok, fail));
+        Assert.That(error, Does.Contain("File cannot be found."));
+        Assert.That(client.LastApiError!.StatusCode, Is.EqualTo(200));
+        api.Clear();
+
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => client.ScoreS3File(
+            new ZeroBounce.ScoreS3FileOptions { FileName = "f.csv", ReturnUrl = done }, ok, fail));
+        Assert.That(error, Does.Contain("File cannot be found."));
+
+        var html = new OfflineClient(api, "html-403-s3");
+        (_, error) = Capture<ZBSendFileResponse>((ok, fail) => html.ScoreS3File(
+            new ZeroBounce.ScoreS3FileOptions { FileName = "f.csv", ReturnUrl = done }, ok, fail));
+        Assert.That(error, Does.Contain("Access denied"));
+        ExpectShort(error!);
+    }
+
+    [Test]
+    public void BulkEmailFinderNeedsAFirstNameOrFullNameColumn()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "finder-key");
+        var csv = WriteCsv();
+        try
+        {
+            // The endpoint has no name to work from without one of the two.
+            var (_, noOptions) = Capture<ZBSendFileResponse>((ok, fail) =>
+                client.SendEmailFinderFile(csv, 1, null, ok, fail));
+            Assert.That(noOptions, Does.Contain("first_name_column"));
+            Assert.That(noOptions, Does.Contain("full_name_column"));
+
+            var (_, neither) = Capture<ZBSendFileResponse>((ok, fail) =>
+                client.SendEmailFinderFile(csv, 1,
+                    new ZeroBounce.EmailFinderSendFileOptions { LastNameColumn = 2, HasHeaderRow = true }, ok, fail));
+            Assert.That(neither, Does.Contain("first_name_column"));
+
+            // Column 0 means "not set", so it does not satisfy the rule either.
+            var (_, zero) = Capture<ZBSendFileResponse>((ok, fail) =>
+                client.SendEmailFinderFile(csv, 1,
+                    new ZeroBounce.EmailFinderSendFileOptions { FirstNameColumn = 0, FullNameColumn = 0 }, ok, fail));
+            Assert.That(zero, Does.Contain("first_name_column"));
+            Assert.That(api.Count, Is.EqualTo(0));
+
+            var (sent, error) = Capture<ZBSendFileResponse>((ok, fail) =>
+                client.SendEmailFinderFile(csv, 1,
+                    new ZeroBounce.EmailFinderSendFileOptions
+                    {
+                        FirstNameColumn = 2,
+                        MiddleNameColumn = 3,
+                        LastNameColumn = 4,
+                        HasHeaderRow = true
+                    }, ok, fail));
+            Assert.That(error, Is.Null);
+            Assert.That(sent!.FileId, Is.EqualTo("finder-key"));
+            var request = Only(api);
+            Assert.That(request.Method, Is.EqualTo("POST"));
+            Assert.That(request.Host, Is.EqualTo("bulkapi.zerobounce.net"));
+            Assert.That(request.Path, Is.EqualTo("/email-finder/sendfile"));
+            Assert.That(request.ApiKey, Is.EqualTo("finder-key"));
+            Assert.That(request.Fields["domain_column"], Is.EqualTo("1"));
+            Assert.That(request.Fields["first_name_column"], Is.EqualTo("2"));
+            Assert.That(request.Fields["middle_name_column"], Is.EqualTo("3"));
+            Assert.That(request.Fields["last_name_column"], Is.EqualTo("4"));
+            Assert.That(request.Fields["has_header_row"], Is.EqualTo("true"));
+            Assert.That(request.Fields.ContainsKey("full_name_column"), Is.False);
+            api.Clear();
+
+            var (_, fullName) = Capture<ZBSendFileResponse>((ok, fail) =>
+                client.SendEmailFinderFile(csv, 1,
+                    new ZeroBounce.EmailFinderSendFileOptions { FullNameColumn = 2 }, ok, fail));
+            Assert.That(fullName, Is.Null);
+            Assert.That(Only(api).Fields["full_name_column"], Is.EqualTo("2"));
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
+    [Test]
+    public void CreateInboxPlacementTestChecksNameTestTypeAndSenderEmail()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "ipt-key");
+
+        var (_, longName) = Capture<JObject>((ok, fail) =>
+            client.CreateInboxPlacementTest(new string('n', 65), null, ok, fail));
+        Assert.That(longName, Does.Contain("name"));
+
+        foreach (var type in new[] { 0, 4, -1 })
+        {
+            var (_, badType) = Capture<JObject>((ok, fail) => client.CreateInboxPlacementTest("Launch",
+                new ZeroBounce.CreateInboxPlacementTestOptions { TestType = type, SenderEmail = "a@example.com" },
+                ok, fail));
+            Assert.That(badType, Does.Contain("testType"));
+        }
+
+        // Test type 1 sends your own campaign to the seeds, so the address it
+        // will come from is required.
+        var (_, noSender) = Capture<JObject>((ok, fail) => client.CreateInboxPlacementTest("Launch",
+            new ZeroBounce.CreateInboxPlacementTestOptions { TestType = 1 }, ok, fail));
+        Assert.That(noSender, Does.Contain("senderEmail"));
+
+        var (_, blankSender) = Capture<JObject>((ok, fail) => client.CreateInboxPlacementTest("Launch",
+            new ZeroBounce.CreateInboxPlacementTestOptions { TestType = 1, SenderEmail = "  " }, ok, fail));
+        Assert.That(blankSender, Does.Contain("senderEmail"));
+        Assert.That(api.Count, Is.EqualTo(0));
+
+        // Exactly 64 characters is still allowed, and types 2 and 3 need no sender.
+        var (_, error) = Capture<JObject>((ok, fail) =>
+            client.CreateInboxPlacementTest(new string('n', 64),
+                new ZeroBounce.CreateInboxPlacementTestOptions
+                {
+                    TestType = 2,
+                    ProviderIds = new List<int> { 1, 2 },
+                    SeedIds = new List<int> { 7 }
+                }, ok, fail));
+        Assert.That(error, Is.Null);
+        var request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("POST"));
+        Assert.That(request.Path, Is.EqualTo("/api/ipt/test"));
+        Assert.That(request.Authorization, Is.EqualTo("Bearer ipt-key"));
+        Assert.That(request.Fields["testType"], Is.EqualTo("2"));
+        Assert.That(request.Fields["providerIds"], Is.EqualTo("[1,2]"));
+        Assert.That(request.Fields["seedIds"], Is.EqualTo("[7]"));
+        Assert.That(request.Fields.ContainsKey("senderEmail"), Is.False);
+        api.Clear();
+
+        (_, error) = Capture<JObject>((ok, fail) => client.CreateInboxPlacementTest("Launch",
+            new ZeroBounce.CreateInboxPlacementTestOptions { TestType = 3 }, ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(Only(api).Fields["testType"], Is.EqualTo("3"));
+
+        var failing = new OfflineClient(api, "ipt-detail-create");
+        var (_, detail) = Capture<JObject>((ok, fail) =>
+            failing.CreateInboxPlacementTest("Launch", null, ok, fail));
+        Assert.That(detail, Does.Contain("Inbox placement test not found."));
+    }
+
+    [Test]
+    public void ListInboxPlacementTestsChecksStatusAndPageSize()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "ipt-key");
+
+        var (_, badStatus) = Capture<JObject>((ok, fail) => client.ListInboxPlacementTests(
+            new ZeroBounce.ListInboxPlacementTestsOptions { Status = "done" }, ok, fail));
+        Assert.That(badStatus, Does.Contain("status"));
+
+        foreach (var size in new[] { 0, 101, -5 })
+        {
+            var (_, badSize) = Capture<JObject>((ok, fail) => client.ListInboxPlacementTests(
+                new ZeroBounce.ListInboxPlacementTestsOptions { PageSize = size }, ok, fail));
+            Assert.That(badSize, Does.Contain("page_size"));
+        }
+        Assert.That(api.Count, Is.EqualTo(0));
+
+        foreach (var size in new[] { 1, 100 })
+        {
+            var (_, error) = Capture<JObject>((ok, fail) => client.ListInboxPlacementTests(
+                new ZeroBounce.ListInboxPlacementTestsOptions { Status = "running", PageSize = size }, ok, fail));
+            Assert.That(error, Is.Null);
+            var request = Only(api);
+            Assert.That(request.Method, Is.EqualTo("GET"));
+            Assert.That(request.Host, Is.EqualTo("bulkapi.zerobounce.net"));
+            Assert.That(request.Path, Is.EqualTo("/api/ipt/tests"));
+            Assert.That(request.Authorization, Is.EqualTo("Bearer ipt-key"));
+            Assert.That(request.Fields["status"], Is.EqualTo("running"));
+            Assert.That(request.Fields["page_size"], Is.EqualTo(size.ToString()));
+            Assert.That(request.Fields.ContainsKey("api_key"), Is.False);
+            api.Clear();
+        }
+
+        var failing = new OfflineClient(api, "ipt-detail-list");
+        var (_, detail) = Capture<JObject>((ok, fail) => failing.ListInboxPlacementTests(null, ok, fail));
+        Assert.That(detail, Does.Contain("Inbox placement test not found."));
+    }
+
+    [Test]
+    public void DeleteInboxPlacementTestTreatsAnEmpty204AsSuccess()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "ipt-key");
+
+        // The empty-body branch used to be unreachable: ReadUsableBody rejected
+        // an empty body first, so a successful delete reported a failure.
+        JObject? deleted = null;
+        string? error = null;
+        client.DeleteInboxPlacementTest("test-1", body => deleted = body, e => error = e);
+
+        Assert.That(error, Is.Null);
+        Assert.That(deleted, Is.Not.Null);
+        Assert.That(deleted!.Count, Is.EqualTo(0));
+        var request = Only(api);
+        Assert.That(request.Method, Is.EqualTo("DELETE"));
+        Assert.That(request.Host, Is.EqualTo("bulkapi.zerobounce.net"));
+        Assert.That(request.Path, Is.EqualTo("/api/ipt/test/test-1"));
+        Assert.That(request.Authorization, Is.EqualTo("Bearer ipt-key"));
+        Assert.That(request.Fields.ContainsKey("api_key"), Is.False);
+
+        var (_, blank) = Capture<JObject>((ok, fail) => client.DeleteInboxPlacementTest("  ", ok, fail));
+        Assert.That(blank, Does.Contain("test_id"));
+
+        // An error body on a delete is still a failure, not an empty success.
+        var failing = new OfflineClient(api, "ipt-detail-delete");
+        var (_, detail) = Capture<JObject>((ok, fail) => failing.DeleteInboxPlacementTest("test-1", ok, fail));
+        Assert.That(detail, Does.Contain("Inbox placement test not found."));
+        Assert.That(failing.LastApiError!.StatusCode, Is.EqualTo(404));
+    }
+
+    [Test]
+    public void AnEmptyBodyIsStillAnErrorOutsideTheInboxPlacementDelete()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "empty-ipt");
+
+        // Allowing the empty 204 must not make every empty body a success.
+        var (_, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementProviders(ok, fail));
+        Assert.That(error, Does.Contain("Empty response"));
     }
 
     [Test]
@@ -1580,6 +1961,12 @@ public class OfflineApiTests
                 // The Inbox Placement Tester is a Django REST framework app and
                 // reports errors under "detail".
                 return Text(HttpStatusCode.NotFound, "{\"detail\":\"Inbox placement test not found.\"}", "application/json");
+            }
+            if (request.Method == "DELETE" && request.Path.StartsWith("/api/ipt/test/", StringComparison.Ordinal))
+            {
+                // LIVE: the Inbox Placement Tester's delete answers HTTP 204
+                // with no body at all.
+                return new HttpResponseMessage(HttpStatusCode.NoContent) { Content = null };
             }
             if (key.StartsWith("double-error-", StringComparison.Ordinal))
                 return Text(HttpStatusCode.BadRequest, "Error: Error: api_key is invalid", "text/plain");

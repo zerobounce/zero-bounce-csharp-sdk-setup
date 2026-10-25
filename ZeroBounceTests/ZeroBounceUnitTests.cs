@@ -715,7 +715,8 @@ public class Tests
             ZeroBounceTest.Instance.SendEmailFinderFile(
                 path,
                 1,
-                null,
+                // The endpoint needs a first name or a full name column.
+                new ZeroBounce.EmailFinderSendFileOptions { FirstNameColumn = 2 },
                 _ => { },
                 Assert.Fail);
             Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/email-finder/sendfile"));
@@ -736,7 +737,12 @@ public class Tests
             ""message"": ""File Accepted""
         }");
         ZeroBounceTest.Instance.ValidateS3File(
-            new ZeroBounce.ValidateS3FileOptions { FileName = "bucket/key.csv" },
+            // LIVE: return_url is required.
+            new ZeroBounce.ValidateS3FileOptions
+            {
+                FileName = "bucket/key.csv",
+                ReturnUrl = "https://example.com/done"
+            },
             _ => { },
             Assert.Fail);
         Assert.That(ZeroBounceTest.Instance.LastRequestUri, Does.Contain("bulkapi.zerobounce.net/validateS3file"));
