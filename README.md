@@ -412,6 +412,32 @@ without `GreylistProcessing = true` — before any request is sent. While that
 retry is still running the API answers with a `Message` instead of a result,
 which lands on `response.Message`.
 
+## Bulk email finder and domain search
+
+Upload a file of domains and get the addresses back. The email finder needs a
+name to work from, so either `FirstNameColumn` or `FullNameColumn` is required
+alongside the domain column; a call without either is rejected before the
+upload. Column `0` means "not set".
+
+```csharp
+var zb = ZeroBounce.Instance;
+
+zb.SendEmailFinderFile("<FILE_PATH>", 1,                 // domain_column
+    new ZeroBounce.EmailFinderSendFileOptions
+    {
+        FirstNameColumn = 2,                             // or FullNameColumn
+        LastNameColumn = 3,
+        HasHeaderRow = true
+    },
+    ok, error);
+zb.EmailFinderFileStatus("<FILE_ID>", ok, error);
+zb.EmailFinderGetFile("<FILE_ID>", "<LOCAL_PATH>", ok, error);
+zb.EmailFinderDeleteFile("<FILE_ID>", ok, error);
+
+zb.SendDomainSearchFile("<FILE_PATH>", 1,                // domain_column
+    new ZeroBounce.DomainSearchSendFileOptions { HasHeaderRow = true }, ok, error);
+```
+
 ## S3 and SFTP/FTP bulk
 
 Queue a job on a file that already sits in your Amazon S3 bucket, or on your
@@ -432,6 +458,24 @@ var s3 = new ZeroBounce.BulkFileJobOptions
 };
 zb.EmailFinderS3File(s3, ok, error);
 zb.DomainSearchS3File(s3, ok, error);
+
+// Validate and score take the same two required fields, plus their own.
+zb.ValidateS3File(new ZeroBounce.ValidateS3FileOptions
+{
+    FileName = "lists/leads.csv",
+    ReturnUrl = "https://example.com/zerobounce-done",
+    HasHeaderRow = true,
+    EmailAddressColumn = 1
+}, ok, error);
+
+zb.ScoreS3File(new ZeroBounce.ScoreS3FileOptions
+{
+    FileName = "lists/leads.csv",
+    ReturnUrl = "https://example.com/zerobounce-done",
+    HasHeaderRow = true
+}, ok, error);
+
+zb.ExportS3File("<FILE_ID>", "bucket-out", ok, error);
 
 // SFTP/FTP. The server, path and protocol come from your ZeroBounce settings.
 // The docs list FileName as optional for ValidateSFTPFile, but the live API
@@ -463,6 +507,8 @@ var zb = ZeroBounce.Instance;
 zb.GetInboxPlacementProviders(ok, error);
 zb.GetInboxPlacementTestTypes(ok, error);
 
+// The name is at most 64 characters and TestType is 1, 2 or 3. Type 1 sends
+// your own campaign to the seeds, so it needs the address you will send from.
 zb.CreateInboxPlacementTest("Launch",
     new ZeroBounce.CreateInboxPlacementTestOptions
     {
@@ -475,10 +521,21 @@ zb.CreateInboxPlacementTest("Launch",
 // Send your campaign to the seeds you got back, then read the results.
 zb.GetInboxPlacementTest("<TEST_ID>", ok, error);
 
+// Status is "running" or "finished" and PageSize is 1-100; both are checked
+// before the request. The page size goes on the wire as page_size: as pageSize
+// the API ignores it and answers with the whole list.
 zb.ListInboxPlacementTests(
-    new ZeroBounce.ListInboxPlacementTestsOptions { Status = "finished", Page = 1 }, ok, error);
+    new ZeroBounce.ListInboxPlacementTestsOptions
+    {
+        Status = "finished",
+        Page = 1,
+        PageSize = 25,
+        CreatedAfter = "2026-01-01",
+        CreatedBefore = "2026-02-01"
+    }, ok, error);
 zb.SetInboxPlacementWebhook("https://example.com/ipt-webhook", ok, error);
 zb.GetInboxPlacementWebhook(ok, error);
+// The delete answers HTTP 204 with an empty body; that is the success.
 zb.DeleteInboxPlacementTest("<TEST_ID>", ok, error);
 ```
 

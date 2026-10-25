@@ -445,28 +445,6 @@ namespace ZeroBounceSDK
         }
 
 
-        /// <param name="domain">The email domain for which to find the email format.</param>
-        /// <param name="first_name">The first name of the person whose email format is being searched. [optional]</param>
-        /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
-        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
-        [Obsolete("Use FindEmail() for Email Finder API, or FindDomain() for Domain Search API")]
-        public void EmailFinder(
-            string domain, string firstName, string middleName, string lastName,
-            Action<ZBEmailFinderResponse> successCallback,
-            Action<string> failureCallback)
-        {
-            if (InvalidApiKey(failureCallback)) return;
-
-            _sendRequest(
-                _apiBaseUrl + "/guessformat?api_key=" + Enc(_apiKey)
-                + "&domain=" + Enc(domain ?? "")
-                + "&first_name=" + Enc(firstName ?? "")
-                + "&middle_name=" + Enc(middleName ?? "")
-                + "&last_name=" + Enc(lastName ?? ""),
-                successCallback,
-                failureCallback).Wait();
-        }
-
         /// <param name="fileId">The returned file ID when calling sendFile API.</param>
         /// <param name="successCallback"> The success callback function, called with a ZBFileStatusResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
@@ -929,12 +907,20 @@ namespace ZeroBounceSDK
         /// <summary>
         /// Returns the body when it can be parsed as an API payload. On HTML, an empty body,
         /// or a non-success status, reports a short error and returns null.
+        /// <para>
+        /// <paramref name="allowEmptyBody"/> is for the endpoints whose success
+        /// really is an empty body, such as the Inbox Placement Tester's DELETE,
+        /// which answers HTTP 204 with nothing in it.
+        /// </para>
         /// </summary>
-        private async Task<string> ReadUsableBody(HttpResponseMessage result, Action<string> failureCallback)
+        private async Task<string> ReadUsableBody(HttpResponseMessage result, Action<string> failureCallback,
+            bool allowEmptyBody = false)
         {
             var body = result.Content == null ? "" : await result.Content.ReadAsStringAsync();
             var media = result.Content?.Headers.ContentType?.MediaType ?? "";
             var status = (int)result.StatusCode;
+            if (allowEmptyBody && status <= 299 && string.IsNullOrWhiteSpace(body))
+                return "";
             if (status > 299 || HttpErrors.ContentTypeIsHtml(media) || HttpErrors.BodyLooksLikeHtml(body) || string.IsNullOrWhiteSpace(body))
             {
                 Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);

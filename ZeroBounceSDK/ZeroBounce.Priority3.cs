@@ -57,12 +57,15 @@ namespace ZeroBounceSDK
             public bool? HasHeaderRow;
         }
 
+        /// <summary>
+        /// The fields of <see cref="ValidateS3File"/>. <see cref="FileName"/> and
+        /// <see cref="ReturnUrl"/> are required; the rest are sent only when set.
+        /// </summary>
         public class ValidateS3FileOptions
         {
             public string FileName;
             public bool? HasHeaderRow;
             public bool? RemoveDuplicates;
-            public bool? RemoveDuplicate;
             public int? EmailAddressColumn;
             public string ReturnUrl;
             public int FirstNameColumn;
@@ -72,13 +75,17 @@ namespace ZeroBounceSDK
             public bool? AllowPhase2;
         }
 
+        /// <summary>
+        /// The fields of <see cref="ScoreS3File"/>. <see cref="FileName"/> and
+        /// <see cref="ReturnUrl"/> are required; the rest are sent only when set.
+        /// </summary>
         public class ScoreS3FileOptions
         {
             public string FileName;
             public bool? HasHeaderRow;
             public bool? RemoveDuplicates;
-            public bool? RemoveDuplicate;
             public int? EmailAddressColumn;
+            public string ReturnUrl;
         }
 
         public void SendEmailFinderFile(string filePath, int domainColumn, EmailFinderSendFileOptions options,
@@ -98,12 +105,26 @@ namespace ZeroBounceSDK
             }
         }
 
+        /// <summary>
+        /// Queues the bulk email finder on an uploaded file (POST /email-finder/sendfile).
+        /// <para>
+        /// Besides domain_column the endpoint needs a name to work from, so
+        /// either first_name_column or full_name_column must be set. Neither is
+        /// checked by the server until the job runs, so the SDK rejects the
+        /// call before the upload.
+        /// </para>
+        /// </summary>
         public void SendEmailFinderFile(Stream file, string fileName, int domainColumn, EmailFinderSendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
             if (domainColumn < 1)
             {
                 failureCallback("Empty parameter: domain_column");
+                return;
+            }
+            if (options == null || (options.FirstNameColumn < 1 && options.FullNameColumn < 1))
+            {
+                failureCallback("Empty parameter: first_name_column or full_name_column required");
                 return;
             }
             var fields = BuildEmailFinderFields(domainColumn, options);
@@ -316,32 +337,47 @@ namespace ZeroBounceSDK
             _sendListRequest<ZBS3ListFileEntry>(query, successCallback, failureCallback).Wait();
         }
 
+        /// <summary>
+        /// Validates a file in your Amazon S3 bucket (POST /validateS3file).
+        /// <para>
+        /// LIVE: return_url is required, as it is on every other S3 and SFTP
+        /// job. Without it the API answers HTTP 400 "Provided return URL is not
+        /// permitted: None", so the SDK rejects the call before sending it.
+        /// </para>
+        /// </summary>
         public void ValidateS3File(ValidateS3FileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            if (options == null || string.IsNullOrWhiteSpace(options.FileName))
+            if (options == null)
             {
                 failureCallback("Empty parameter: file_name");
                 return;
             }
-            _PostBulkRootForm("/validateS3file", BuildValidateS3Fields(options), successCallback, failureCallback).Wait();
+            _BulkRootFileJob("/validateS3file", options.FileName, options.HasHeaderRow,
+                options.RemoveDuplicates, options.ReturnUrl, BuildValidateS3ExtraFields(options),
+                successCallback, failureCallback);
         }
 
+        /// <summary>
+        /// Scores a file in your Amazon S3 bucket (POST /scoreS3file).
+        /// <para>
+        /// LIVE: return_url is required here too. It was never sent at all
+        /// before, which made this call impossible to complete.
+        /// </para>
+        /// </summary>
         public void ScoreS3File(ScoreS3FileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            if (options == null || string.IsNullOrWhiteSpace(options.FileName))
+            if (options == null)
             {
                 failureCallback("Empty parameter: file_name");
                 return;
             }
-            var fields = new Dictionary<string, string> { { "file_name", options.FileName } };
-            PutOptionalBool(fields, "has_header_row", options.HasHeaderRow);
-            PutOptionalBool(fields, "remove_duplicates", options.RemoveDuplicates);
-            PutOptionalBool(fields, "remove_duplicate", options.RemoveDuplicate);
+            var extra = new Dictionary<string, string>();
             if (options.EmailAddressColumn.HasValue)
-                fields["email_address_column"] = options.EmailAddressColumn.Value.ToString();
-            _PostBulkRootForm("/scoreS3file", fields, successCallback, failureCallback).Wait();
+                extra["email_address_column"] = options.EmailAddressColumn.Value.ToString();
+            _BulkRootFileJob("/scoreS3file", options.FileName, options.HasHeaderRow,
+                options.RemoveDuplicates, options.ReturnUrl, extra, successCallback, failureCallback);
         }
 
         public void ExportS3File(string fileId, string exportBucket,
@@ -477,12 +513,32 @@ namespace ZeroBounceSDK
         private void _BulkRootFileJob(string path, BulkFileJobOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            if (options == null || string.IsNullOrWhiteSpace(options.FileName))
+            if (options == null)
             {
                 failureCallback("Empty parameter: file_name");
                 return;
             }
-            if (string.IsNullOrWhiteSpace(options.ReturnUrl))
+            // has_header_row is not nullable here, so it always goes on the wire.
+            _BulkRootFileJob(path, options.FileName, options.HasHeaderRow, options.RemoveDuplicates,
+                options.ReturnUrl, null, successCallback, failureCallback);
+        }
+
+        /// <summary>
+        /// The shared body of every S3 / SFTP file job: the required file_name
+        /// and return_url check, the documented fields, and anything extra the
+        /// individual job takes. A null <paramref name="hasHeaderRow"/> or
+        /// <paramref name="removeDuplicates"/> is not sent at all.
+        /// </summary>
+        private void _BulkRootFileJob(string path, string fileName, bool? hasHeaderRow, bool? removeDuplicates,
+            string returnUrl, Dictionary<string, string> extraFields,
+            Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                failureCallback("Empty parameter: file_name");
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(returnUrl))
             {
                 failureCallback("Empty parameter: return_url");
                 return;
@@ -490,12 +546,16 @@ namespace ZeroBounceSDK
 
             var fields = new Dictionary<string, string>
             {
-                { "has_header_row", options.HasHeaderRow ? "true" : "false" },
-                { "file_name", options.FileName },
-                { "return_url", options.ReturnUrl }
+                { "file_name", fileName },
+                { "return_url", returnUrl }
             };
-            if (options.RemoveDuplicates.HasValue)
-                fields["remove_duplicates"] = options.RemoveDuplicates.Value ? "true" : "false";
+            PutOptionalBool(fields, "has_header_row", hasHeaderRow);
+            PutOptionalBool(fields, "remove_duplicates", removeDuplicates);
+            if (extraFields != null)
+            {
+                foreach (var entry in extraFields)
+                    fields[entry.Key] = entry.Value;
+            }
 
             _PostBulkRootForm(path, fields, successCallback, failureCallback).Wait();
         }
@@ -525,16 +585,16 @@ namespace ZeroBounceSDK
             return fields;
         }
 
-        private static Dictionary<string, string> BuildValidateS3Fields(ValidateS3FileOptions options)
+        /// <summary>
+        /// The fields validateS3file takes on top of the ones every S3 / SFTP
+        /// job shares. file_name, return_url, has_header_row and
+        /// remove_duplicates are added by <see cref="_BulkRootFileJob"/>.
+        /// </summary>
+        private static Dictionary<string, string> BuildValidateS3ExtraFields(ValidateS3FileOptions options)
         {
-            var fields = new Dictionary<string, string> { { "file_name", options.FileName } };
-            PutOptionalBool(fields, "has_header_row", options.HasHeaderRow);
-            PutOptionalBool(fields, "remove_duplicates", options.RemoveDuplicates);
-            PutOptionalBool(fields, "remove_duplicate", options.RemoveDuplicate);
+            var fields = new Dictionary<string, string>();
             if (options.EmailAddressColumn.HasValue)
                 fields["email_address_column"] = options.EmailAddressColumn.Value.ToString();
-            if (!string.IsNullOrEmpty(options.ReturnUrl))
-                fields["return_url"] = options.ReturnUrl;
             if (options.FirstNameColumn > 0)
                 fields["first_name_column"] = options.FirstNameColumn.ToString();
             if (options.LastNameColumn > 0)

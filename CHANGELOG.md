@@ -12,15 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Validate` and `ValidateBatch` take `ZBValidateOptions`: `Timeout`, `ActivityData`, `VerifyPlus`, and `UsePost` (form-encoded `POST /validate`).
 - `ZBValidateResponse` reads `active_in_days` and `active_first_seen`.
 - `ScoreEmail` (`GET /v2/scoring`) and `ScoreEmailPost` (form-encoded `POST /v2/scoring`).
-- Bulk email finder (`SendEmailFinderFile`, `EmailFinderFileStatus`, `EmailFinderGetFile`, `EmailFinderDeleteFile`).
+- Bulk email finder (`SendEmailFinderFile`, `EmailFinderFileStatus`, `EmailFinderGetFile`, `EmailFinderDeleteFile`). `SendEmailFinderFile` needs a name to work from, so `EmailFinderSendFileOptions.FirstNameColumn` or `FullNameColumn` is required alongside the domain column, and a call without either is rejected before the upload.
 - Bulk domain search (`SendDomainSearchFile`, `DomainSearchFileStatus`, `DomainSearchGetFile`, `DomainSearchDeleteFile`).
 - List evaluator (`SendListEvaluatorFile`, `GetListEvaluatorResult`, `SendEvaluatedFile`).
 - Filters (`AddFilter`, `ListFilters`, `DeleteFilter`).
-- S3 bulk (`ValidateS3File`, `ScoreS3File`, `ExportS3File`, `ListS3Files`, `EmailFinderS3File`, `DomainSearchS3File`).
+- S3 bulk (`ValidateS3File`, `ScoreS3File`, `ExportS3File`, `ListS3Files`, `EmailFinderS3File`, `DomainSearchS3File`). `ValidateS3FileOptions` and `ScoreS3FileOptions` take `FileName` and `ReturnUrl`; both are required.
 - SFTP/FTP bulk (`ValidateSFTPFile`, `ScoreSFTPFile`, `EmailFinderSFTPFile`, `DomainSearchSFTPFile`, `ExportSFTPFile`), sharing the new `BulkFileJobOptions`. The server, path and protocol come from your ZeroBounce settings. `ValidateSFTPFile`'s `FileName` is optional; `ExportSFTPFile` takes `export_path` rather than the `export_bucket` `ExportS3File` sends.
 - `ZBValidateOptions` accepts `DomainInfo`, `GreylistProcessing` and `CallbackUrl`. `CallbackUrl` needs `GreylistProcessing = true` and is rejected without it, and when blank, before a request is sent.
 - `ZBValidateResponse` reads `domain_website_exists`, `domain_registrant_company_name` and `Message`. `Message` is returned instead of a result while a greylist retry is still running.
-- Inbox Placement Tester on `https://bulkapi.zerobounce.net/api/ipt`: `GetInboxPlacementProviders`, `GetInboxPlacementTestTypes`, `CreateInboxPlacementTest`, `GetInboxPlacementTest`, `ListInboxPlacementTests`, `DeleteInboxPlacementTest`, `GetInboxPlacementWebhook`, `SetInboxPlacementWebhook`. The API key goes on the query string, bodies are camelCase JSON, and unset fields are left out.
+- Inbox Placement Tester on `https://bulkapi.zerobounce.net/api/ipt`: `GetInboxPlacementProviders`, `GetInboxPlacementTestTypes`, `CreateInboxPlacementTest`, `GetInboxPlacementTest`, `ListInboxPlacementTests`, `DeleteInboxPlacementTest`, `GetInboxPlacementWebhook`, `SetInboxPlacementWebhook`. Bodies are camelCase JSON, and unset fields are left out. `CreateInboxPlacementTest` rejects a name over 64 characters, a `TestType` other than 1, 2 or 3, and a `TestType` of 1 without a `SenderEmail`, before a request is sent.
+- `ListInboxPlacementTestsOptions.CreatedAfter` and `CreatedBefore`, sent as `createdAfter` and `createdBefore`. `Status` must be `running` or `finished` and `PageSize` must be between 1 and 100; both are checked before a request is sent.
 - `SetListEvaluatorBaseUrl` and `SetInboxPlacementBaseUrl`.
 - `ZeroBounceWarmup`, a client for the Warmup API. It is a separate product with its own host (`https://warmup-api.zerobounce.net`), its own team-scoped key sent in an `API-Key` header, and all 26 documented endpoints, including the seed-list and statistics CSV downloads.
 - `ZBApiError` and `LastApiError` on both clients: the short message the failure callback was given, plus the HTTP status, so callers can tell a Cloudflare 403 from an API 400/404 and a Warmup 429.
@@ -35,8 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `ValidateBatch` sends `timeout` as a JSON string. Sent as a number, the live API rejects the whole batch with an account-level error.
 - The Inbox Placement Tester authenticates with an `Authorization: Bearer` header instead of an `api_key` parameter, so the key no longer reaches a query string that gets logged, and `ListInboxPlacementTests` calls `GET /tests`. `GET /test` answers `Method "GET" not allowed`.
 - `SendEvaluatedFile(fileId)` posts the list evaluator's `file_id` as a form field. The endpoint rejects a file upload with "file_id: This field is required", so it no longer takes a path or a stream.
-- The S3 and SFTP/FTP jobs require `file_name` and `return_url`, `ValidateSFTPFile` included, although the docs list `file_name` as optional for that one.
+- All eight S3 and SFTP/FTP file jobs require `file_name` and `return_url`, `ValidateS3File`, `ScoreS3File` and `ValidateSFTPFile` included, although the docs list `file_name` as optional for the last one. Without `return_url` the API answers `Provided return URL is not permitted: None`.
+- `ValidateS3File` and `ScoreS3File` no longer send `remove_duplicate` (singular) beside the documented `remove_duplicates`, and `ValidateS3FileOptions.RemoveDuplicate` / `ScoreS3FileOptions.RemoveDuplicate` are gone. Use `RemoveDuplicates`.
+- `ListInboxPlacementTests` sends the page size as `page_size`. As `pageSize` the API silently ignored it and returned the whole list.
+- `DeleteInboxPlacementTest` reports the empty HTTP 204 the API answers with as a success. It used to reach the failure callback as an empty response.
 - Query values, including the API key, email, and file id, are percent-encoded.
+
+### Removed
+
+- `EmailFinder()`, deprecated since 2.0. It sent `domain`, `first_name`, `middle_name` and `last_name` unconditionally, as empty strings when unset. Use `FindEmailByDomain` / `FindEmailByCompanyName` for the email finder, or `FindDomainByDomain` / `FindDomainByCompanyName` for domain search.
 
 ### Fixed
 
