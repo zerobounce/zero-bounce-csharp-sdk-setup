@@ -27,7 +27,7 @@ namespace ZeroBounceSDK
     /// payload; a payload that is not a JSON object — <c>/seeds</c> is an
     /// array, <c>/seed-count</c> a bare number — arrives as that
     /// <see cref="JToken"/>. <see cref="LastApiError"/> carries the HTTP
-    /// status of the most recent failure.
+    /// status when the most recent call failed, and is null after a success.
     /// </para>
     /// </summary>
     public class ZeroBounceWarmup
@@ -62,9 +62,11 @@ namespace ZeroBounceSDK
         }
 
         /// <summary>
-        /// The detail of the failure the most recent callback on this client
-        /// reported: the same short message, plus the HTTP status. It is set
-        /// synchronously, immediately before the failure callback runs.
+        /// The outcome of the most recent call on this client: null when it
+        /// succeeded, otherwise the short message its failure callback was
+        /// given plus the HTTP status (0 when the failure never reached the
+        /// API). It is set synchronously, immediately before either callback
+        /// runs.
         /// </summary>
         public ZBApiError LastApiError { get; private set; }
 
@@ -555,6 +557,12 @@ namespace ZeroBounceSDK
             fail(message);
         }
 
+        private void Succeed<T>(Action<T> ok, T value)
+        {
+            LastApiError = null;
+            ok(value);
+        }
+
         private bool NotReady(Action<string> fail)
         {
             if (_setupProblem == null) return false;
@@ -597,21 +605,99 @@ namespace ZeroBounceSDK
             };
         }
 
-        /// <summary>Replaces every form of a secret in a message with ***.</summary>
+        /// <summary>
+        /// Replaces every form of a secret in a message with ***.
+        /// <para>
+        /// A JSON error body with no message field is passed on as it came, so
+        /// a secret can be in it JSON-escaped: a <c>"</c> or <c>\</c> in a
+        /// password arrives as <c>\"</c> or <c>\\</c>, and a serializer may
+        /// also escape non-ASCII, HTML characters or <c>/</c>. Such a body is
+        /// parsed and masked string by string, and every escaped spelling of
+        /// the secret Newtonsoft produces is masked in the text as well.
+        /// </para>
+        /// </summary>
         private string Redact(string text, string[] secrets)
         {
             var value = text ?? "";
+            var all = new List<string>();
             if (!string.IsNullOrEmpty(_apiKey))
-                value = value.Replace(_apiKey, "***");
+                all.Add(_apiKey);
             if (secrets != null)
+                all.AddRange(secrets.Where(secret => !string.IsNullOrEmpty(secret)));
+            if (all.Count == 0)
+                return value;
+
+            value = RedactJsonStrings(value, all);
+            foreach (var secret in all)
             {
-                foreach (var secret in secrets)
-                {
-                    if (!string.IsNullOrEmpty(secret))
-                        value = value.Replace(secret, "***");
-                }
+                foreach (var form in SecretForms(secret))
+                    value = value.Replace(form, "***");
             }
             return value;
+        }
+
+        /// <summary>The secret as written, then each JSON-escaped spelling of it.</summary>
+        private static IEnumerable<string> SecretForms(string secret)
+        {
+            yield return secret;
+            foreach (var handling in new[]
+                     {
+                         StringEscapeHandling.Default,
+                         StringEscapeHandling.EscapeNonAscii,
+                         StringEscapeHandling.EscapeHtml
+                     })
+            {
+                var quoted = JsonConvert.ToString(secret, '"', handling);
+                var inner = quoted.Substring(1, quoted.Length - 2);
+                yield return inner;
+                yield return inner.Replace("/", "\\/");
+                yield return Regex.Replace(inner, @"\\u[0-9a-f]{4}", m => m.Value.ToUpperInvariant().Replace("\\U", "\\u"));
+            }
+        }
+
+        /// <summary>
+        /// When the text is a JSON object or array, masks the secrets inside its
+        /// decoded strings, whatever escaping the server used, and writes it back.
+        /// </summary>
+        private static string RedactJsonStrings(string text, List<string> secrets)
+        {
+            var trimmed = text.Trim();
+            if (trimmed.Length == 0 || (trimmed[0] != '{' && trimmed[0] != '['))
+                return text;
+            JContainer token;
+            try
+            {
+                token = JToken.Parse(trimmed) as JContainer;
+            }
+            catch (JsonException)
+            {
+                return text;
+            }
+            if (token == null)
+                return text;
+            var changed = false;
+            foreach (var leaf in token.DescendantsAndSelf().OfType<JValue>())
+            {
+                if (leaf.Type != JTokenType.String) continue;
+                var original = leaf.Value<string>() ?? "";
+                var masked = original;
+                foreach (var secret in secrets)
+                    masked = masked.Replace(secret, "***");
+                if (masked == original) continue;
+                leaf.Value = masked;
+                changed = true;
+            }
+            // Deepest first, so replacing a property never orphans one inside it.
+            foreach (var property in token.DescendantsAndSelf().OfType<JProperty>().Reverse().ToList())
+            {
+                var masked = property.Name;
+                foreach (var secret in secrets)
+                    masked = masked.Replace(secret, "***");
+                if (masked == property.Name) continue;
+                property.Replace(new JProperty(masked, property.Value));
+                changed = true;
+            }
+            return changed ? token.ToString(Formatting.None) : text;
         }
 
         private string Url(string path, List<KeyValuePair<string, string>> query)
@@ -693,20 +779,23 @@ namespace ZeroBounceSDK
             if (result == null) return;
             if (result.Status == 204 || string.IsNullOrWhiteSpace(result.Body))
             {
-                ok(null);
+                Succeed(ok, (JToken)null);
                 return;
             }
+            JToken payload;
             try
             {
                 // LIVE: not every endpoint answers with an object. /seeds is a
                 // JSON array and /seed-count is a bare number.
-                ok(JToken.Parse(result.Body));
+                payload = JToken.Parse(result.Body);
             }
             catch (JsonException)
             {
                 Fail(fail, Redact(HttpErrors.MessageFromBody(result.Body, result.Status), secrets),
                     result.Status);
+                return;
             }
+            Succeed(ok, payload);
         }
 
         private void Csv(string path, List<KeyValuePair<string, string>> query,
@@ -714,14 +803,18 @@ namespace ZeroBounceSDK
         {
             var result = Send(HttpMethod.Get, path, query, null, fail, null);
             if (result == null) return;
+            // An HTML page with status 200 (a Cloudflare challenge or a proxy
+            // error) is an error, as it is for the other downloads, not CSV.
             if (string.IsNullOrWhiteSpace(result.Body)
-                || result.ContentType.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0)
+                || result.ContentType.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0
+                || HttpErrors.ContentTypeIsHtml(result.ContentType)
+                || HttpErrors.BodyLooksLikeHtml(result.Body))
             {
                 Fail(fail, Redact(HttpErrors.MessageFromBody(result.Body, result.Status), null),
                     result.Status);
                 return;
             }
-            ok(result.Body);
+            Succeed(ok, result.Body);
         }
 
         // -- option holders ----------------------------------------------------

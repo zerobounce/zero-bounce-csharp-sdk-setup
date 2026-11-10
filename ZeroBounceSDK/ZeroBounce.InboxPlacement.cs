@@ -11,9 +11,10 @@ namespace ZeroBounceSDK
     /// <summary>
     /// Inbox Placement Tester (https://bulkapi.zerobounce.net/api/ipt).
     /// <para>
-    /// Unlike the rest of the SDK these endpoints take the API key on the query
-    /// string, send and receive camelCase JSON, use PUT and DELETE as well as
-    /// GET and POST, and report errors under a "detail" key (Django REST
+    /// Unlike the rest of the SDK these endpoints take the API key in an
+    /// <c>Authorization: Bearer</c> header rather than an <c>api_key</c>
+    /// parameter, send and receive camelCase JSON, use PUT and DELETE as well
+    /// as GET and POST, and report errors under a "detail" key (Django REST
     /// framework). They spend the account's inbox-test credits.
     /// </para>
     /// </summary>
@@ -78,22 +79,22 @@ namespace ZeroBounceSDK
         {
             if (string.IsNullOrWhiteSpace(name))
             {
-                failureCallback("Empty parameter: name");
+                Fail(failureCallback, "Empty parameter: name", 0);
                 return;
             }
             if (name.Length > 64)
             {
-                failureCallback("Invalid parameter: name (must be at most 64 characters)");
+                Fail(failureCallback, "Invalid parameter: name (must be at most 64 characters)", 0);
                 return;
             }
             if (options?.TestType != null && Array.IndexOf(InboxPlacementTestTypes, options.TestType.Value) < 0)
             {
-                failureCallback("Invalid parameter: testType (must be 1, 2 or 3)");
+                Fail(failureCallback, "Invalid parameter: testType (must be 1, 2 or 3)", 0);
                 return;
             }
             if (options?.TestType == 1 && string.IsNullOrWhiteSpace(options.SenderEmail))
             {
-                failureCallback("Empty parameter: senderEmail is required when testType is 1");
+                Fail(failureCallback, "Empty parameter: senderEmail is required when testType is 1", 0);
                 return;
             }
 
@@ -130,14 +131,14 @@ namespace ZeroBounceSDK
                 {
                     if (Array.IndexOf(InboxPlacementStatuses, options.Status.Trim().ToLowerInvariant()) < 0)
                     {
-                        failureCallback("Invalid parameter: status (must be running or finished)");
+                        Fail(failureCallback, "Invalid parameter: status (must be running or finished)", 0);
                         return;
                     }
                     query += "&status=" + Enc(options.Status.Trim().ToLowerInvariant());
                 }
                 if (options.PageSize.HasValue && (options.PageSize.Value < 1 || options.PageSize.Value > 100))
                 {
-                    failureCallback("Invalid parameter: page_size (must be between 1 and 100)");
+                    Fail(failureCallback, "Invalid parameter: page_size (must be between 1 and 100)", 0);
                     return;
                 }
                 if (options.Page.HasValue) query += "&page=" + Enc(options.Page.Value.ToString());
@@ -173,7 +174,7 @@ namespace ZeroBounceSDK
         {
             if (string.IsNullOrWhiteSpace(webhookUrl))
             {
-                failureCallback("Empty parameter: webhook_url");
+                Fail(failureCallback, "Empty parameter: webhook_url", 0);
                 return;
             }
             var body = new JObject { ["webhookUrl"] = webhookUrl };
@@ -184,7 +185,7 @@ namespace ZeroBounceSDK
         {
             if (string.IsNullOrWhiteSpace(testId))
             {
-                failureCallback("Empty parameter: test_id");
+                Fail(failureCallback, "Empty parameter: test_id", 0);
                 return null;
             }
             return Enc(testId.Trim());
@@ -218,28 +219,12 @@ namespace ZeroBounceSDK
                 // LIVE: DELETE /test/{id} answers HTTP 204 with an empty body.
                 // That is the success, so it must not be read as the empty
                 // response ReadUsableBody normally rejects.
-                var allowEmptyBody = method == HttpMethod.Delete;
-                var payload = await ReadUsableBody(result, failureCallback, allowEmptyBody);
-                if (payload == null)
-                    return;
-                if (payload.Trim().Length == 0)
-                {
-                    successCallback(new JObject());
-                    return;
-                }
-                var token = JToken.Parse(payload);
-                if (token is JObject obj)
-                    successCallback(obj);
-                else
-                    failureCallback("ZeroBounce returned an unexpected JSON response.");
-            }
-            catch (JsonException)
-            {
-                failureCallback("ZeroBounce returned a response that is not valid JSON.");
+                await DeliverJson(result, successCallback, failureCallback,
+                    allowEmptyBody: method == HttpMethod.Delete);
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey), 0);
             }
         }
     }

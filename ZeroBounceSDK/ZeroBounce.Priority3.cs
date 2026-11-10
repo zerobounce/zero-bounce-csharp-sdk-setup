@@ -101,7 +101,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
             }
         }
 
@@ -119,12 +119,12 @@ namespace ZeroBounceSDK
         {
             if (domainColumn < 1)
             {
-                failureCallback("Empty parameter: domain_column");
+                Fail(failureCallback, "Empty parameter: domain_column", 0);
                 return;
             }
             if (options == null || (options.FirstNameColumn < 1 && options.FullNameColumn < 1))
             {
-                failureCallback("Empty parameter: first_name_column or full_name_column required");
+                Fail(failureCallback, "Empty parameter: first_name_column or full_name_column required", 0);
                 return;
             }
             var fields = BuildEmailFinderFields(domainColumn, options);
@@ -163,7 +163,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
             }
         }
 
@@ -172,7 +172,7 @@ namespace ZeroBounceSDK
         {
             if (domainColumn < 1)
             {
-                failureCallback("Empty parameter: domain_column");
+                Fail(failureCallback, "Empty parameter: domain_column", 0);
                 return;
             }
             var fields = BuildDomainSearchFields(domainColumn, options);
@@ -211,7 +211,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
             }
         }
 
@@ -220,7 +220,7 @@ namespace ZeroBounceSDK
         {
             if (emailAddressColumn < 1)
             {
-                failureCallback("Empty parameter: email_address_column");
+                Fail(failureCallback, "Empty parameter: email_address_column", 0);
                 return;
             }
             var fields = new Dictionary<string, string>
@@ -236,7 +236,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
             if (string.IsNullOrWhiteSpace(fileId))
             {
-                failureCallback("Empty parameter: file_id");
+                Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
             // The file id is one path segment, so a slash in it must stay encoded.
@@ -262,7 +262,7 @@ namespace ZeroBounceSDK
         {
             if (string.IsNullOrWhiteSpace(fileId))
             {
-                failureCallback("Empty parameter: file_id");
+                Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
             _PostBulkRootForm("/v2/send-evaluated-file/",
@@ -276,7 +276,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
             if (string.IsNullOrWhiteSpace(rule) || string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(value))
             {
-                failureCallback("Empty parameter: rule, target, and value are required");
+                Fail(failureCallback, "Empty parameter: rule, target, and value are required", 0);
                 return;
             }
             var form = new Dictionary<string, string>
@@ -312,7 +312,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
             if (string.IsNullOrWhiteSpace(rule) || string.IsNullOrWhiteSpace(target) || string.IsNullOrWhiteSpace(value))
             {
-                failureCallback("Empty parameter: rule, target, and value are required");
+                Fail(failureCallback, "Empty parameter: rule, target, and value are required", 0);
                 return;
             }
             var form = new Dictionary<string, string>
@@ -350,7 +350,7 @@ namespace ZeroBounceSDK
         {
             if (options == null)
             {
-                failureCallback("Empty parameter: file_name");
+                Fail(failureCallback, "Empty parameter: file_name", 0);
                 return;
             }
             _BulkRootFileJob("/validateS3file", options.FileName, options.HasHeaderRow,
@@ -370,7 +370,7 @@ namespace ZeroBounceSDK
         {
             if (options == null)
             {
-                failureCallback("Empty parameter: file_name");
+                Fail(failureCallback, "Empty parameter: file_name", 0);
                 return;
             }
             var extra = new Dictionary<string, string>();
@@ -385,12 +385,12 @@ namespace ZeroBounceSDK
         {
             if (string.IsNullOrWhiteSpace(fileId))
             {
-                failureCallback("Empty parameter: file_id");
+                Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
             if (exportBucket != null && string.IsNullOrWhiteSpace(exportBucket))
             {
-                failureCallback("Empty parameter: export_bucket");
+                Fail(failureCallback, "Empty parameter: export_bucket", 0);
                 return;
             }
             // Without an export_bucket the one from the account's settings is used.
@@ -403,10 +403,12 @@ namespace ZeroBounceSDK
         /// <summary>
         /// The documented fields shared by the six S3 and SFTP/FTP file jobs.
         /// <para>
-        /// <see cref="FileName"/> is required by every job except
-        /// <see cref="ValidateSFTPFile"/>, where the docs list it as optional:
-        /// leaving it null there uses the input bucket configured in your
-        /// ZeroBounce settings.
+        /// <see cref="FileName"/> and <see cref="ReturnUrl"/> are required by
+        /// every job, <see cref="ValidateSFTPFile"/> included, although the docs
+        /// list file_name as optional for that one: the API rejects the job
+        /// without it, so a null or blank value reaches the failure callback
+        /// before any request is sent. <see cref="HasHeaderRow"/> is always
+        /// sent; <see cref="RemoveDuplicates"/> only when set.
         /// </para>
         /// </summary>
         public class BulkFileJobOptions
@@ -482,12 +484,12 @@ namespace ZeroBounceSDK
         {
             if (string.IsNullOrWhiteSpace(fileId))
             {
-                failureCallback("Empty parameter: file_id");
+                Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
             if (exportPath != null && string.IsNullOrWhiteSpace(exportPath))
             {
-                failureCallback("Empty parameter: export_path");
+                Fail(failureCallback, "Empty parameter: export_path", 0);
                 return;
             }
             var fields = new Dictionary<string, string> { { "file_id", fileId } };
@@ -496,11 +498,6 @@ namespace ZeroBounceSDK
             _PostBulkRootForm("/exportSFTPfile", fields, successCallback, failureCallback).Wait();
         }
 
-        /// <summary>
-        /// POSTs one of the six documented S3 / SFTP file jobs on the bulkapi
-        /// root. Booleans go on the wire as the strings "true"/"false", and an
-        /// option the caller left unset is not sent at all.
-        /// </summary>
         /// <summary>
         /// POSTs one of the six documented S3 / SFTP file jobs on the bulkapi root.
         /// <para>
@@ -515,7 +512,7 @@ namespace ZeroBounceSDK
         {
             if (options == null)
             {
-                failureCallback("Empty parameter: file_name");
+                Fail(failureCallback, "Empty parameter: file_name", 0);
                 return;
             }
             // has_header_row is not nullable here, so it always goes on the wire.
@@ -535,12 +532,12 @@ namespace ZeroBounceSDK
         {
             if (string.IsNullOrWhiteSpace(fileName))
             {
-                failureCallback("Empty parameter: file_name");
+                Fail(failureCallback, "Empty parameter: file_name", 0);
                 return;
             }
             if (string.IsNullOrWhiteSpace(returnUrl))
             {
-                failureCallback("Empty parameter: return_url");
+                Fail(failureCallback, "Empty parameter: return_url", 0);
                 return;
             }
 
@@ -632,7 +629,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
             }
         }
 
@@ -649,7 +646,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
             }
         }
 
@@ -659,7 +656,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
             if (string.IsNullOrWhiteSpace(fileId))
             {
-                failureCallback("Empty parameter: file_id");
+                Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
             _sendRequest(
@@ -674,7 +671,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
             if (string.IsNullOrWhiteSpace(fileId))
             {
-                failureCallback("Empty parameter: file_id");
+                Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
             _sendRequest(
@@ -689,7 +686,7 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
             if (string.IsNullOrWhiteSpace(fileId))
             {
-                failureCallback("Empty parameter: file_id");
+                Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
             try
@@ -700,7 +697,7 @@ namespace ZeroBounceSDK
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(e.Message, _apiKey));
+                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
             }
         }
 
@@ -709,22 +706,11 @@ namespace ZeroBounceSDK
             try
             {
                 var result = await _client.GetAsync(url);
-                var body = await ReadUsableBody(result, failureCallback);
-                if (body == null)
-                    return;
-                var token = JToken.Parse(body);
-                if (token is JObject obj)
-                    successCallback(obj);
-                else
-                    failureCallback("ZeroBounce returned an unexpected JSON response.");
-            }
-            catch (JsonException)
-            {
-                failureCallback("ZeroBounce returned a response that is not valid JSON.");
+                await DeliverJson(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey), 0);
             }
         }
 
@@ -733,18 +719,11 @@ namespace ZeroBounceSDK
             try
             {
                 var result = await _client.GetAsync(url);
-                var body = await ReadUsableBody(result, failureCallback);
-                if (body == null)
-                    return;
-                successCallback(JToken.Parse(body));
-            }
-            catch (JsonException)
-            {
-                failureCallback("ZeroBounce returned a response that is not valid JSON.");
+                await DeliverJsonToken(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey), 0);
             }
         }
 
@@ -755,22 +734,11 @@ namespace ZeroBounceSDK
             {
                 var content = new FormUrlEncodedContent(form);
                 var result = await _client.PostAsync(url, content);
-                var body = await ReadUsableBody(result, failureCallback);
-                if (body == null)
-                    return;
-                var token = JToken.Parse(body);
-                if (token is JObject obj)
-                    successCallback(obj);
-                else
-                    failureCallback("ZeroBounce returned an unexpected JSON response.");
-            }
-            catch (JsonException)
-            {
-                failureCallback("ZeroBounce returned a response that is not valid JSON.");
+                await DeliverJson(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey), 0);
             }
         }
 
@@ -781,18 +749,62 @@ namespace ZeroBounceSDK
             {
                 var content = new FormUrlEncodedContent(form);
                 var result = await _client.PostAsync(url, content);
-                var body = await ReadUsableBody(result, failureCallback);
-                if (body == null)
-                    return;
-                successCallback(JToken.Parse(body));
-            }
-            catch (JsonException)
-            {
-                failureCallback("ZeroBounce returned a response that is not valid JSON.");
+                await DeliverJsonToken(result, successCallback, failureCallback);
             }
             catch (Exception e)
             {
-                failureCallback(RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey));
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(e.Message, 0), _apiKey), 0);
+            }
+        }
+
+        /// <summary>
+        /// Reads a usable body and hands it to the caller as a JSON object, or
+        /// reports why it could not, with the HTTP status of the response.
+        /// </summary>
+        private async Task DeliverJson(HttpResponseMessage result, Action<JObject> successCallback,
+            Action<string> failureCallback, bool allowEmptyBody = false)
+        {
+            var status = (int)result.StatusCode;
+            var body = await ReadUsableBody(result, failureCallback, allowEmptyBody);
+            if (body == null)
+                return;
+            if (body.Trim().Length == 0)
+            {
+                Succeed(successCallback, new JObject());
+                return;
+            }
+            var token = ParseJson(body, status, failureCallback);
+            if (token == null)
+                return;
+            if (token is JObject obj)
+                Succeed(successCallback, obj);
+            else
+                Fail(failureCallback, "ZeroBounce returned an unexpected JSON response.", status);
+        }
+
+        /// <summary>Like the <see cref="JObject"/> overload, for calls whose result may be an array.</summary>
+        private async Task DeliverJsonToken(HttpResponseMessage result, Action<JToken> successCallback,
+            Action<string> failureCallback)
+        {
+            var status = (int)result.StatusCode;
+            var body = await ReadUsableBody(result, failureCallback);
+            if (body == null)
+                return;
+            var token = ParseJson(body, status, failureCallback);
+            if (token != null)
+                Succeed(successCallback, token);
+        }
+
+        private JToken ParseJson(string body, int status, Action<string> failureCallback)
+        {
+            try
+            {
+                return JToken.Parse(body);
+            }
+            catch (JsonException)
+            {
+                Fail(failureCallback, "ZeroBounce returned a response that is not valid JSON.", status);
+                return null;
             }
         }
     }

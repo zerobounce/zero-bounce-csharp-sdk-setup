@@ -928,7 +928,7 @@ public class OfflineApiTests
         var packageVersion = PackageVersionFromCsproj();
         var userAgent = probe.Http.DefaultRequestHeaders.UserAgent.ToString();
         Assert.That(userAgent, Is.EqualTo("ZeroBounceSDK/" + packageVersion));
-        Assert.That(packageVersion, Is.EqualTo("2.1.6"));
+        Assert.That(packageVersion, Is.EqualTo("3.0.0"));
         Assert.That(probe.Http.Timeout, Is.EqualTo(TimeSpan.FromSeconds(120)));
         Assert.That(AllowsRedirects(probe.Http), Is.False);
     }
@@ -1309,6 +1309,133 @@ public class OfflineApiTests
         Assert.That(error, Does.Contain("File cannot be found."));
         Assert.That(client.LastApiError, Is.Not.Null);
         Assert.That(client.LastApiError.StatusCode, Is.EqualTo(200));
+    }
+
+    [Test]
+    public void AnErrorOnlyBodyOnAnHttp200IsAnError()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "error-only-key");
+
+        // LIVE: an invalid or drained key answers with an HTTP 200 whose body is
+        // only {"error": "Invalid API key"}. It used to reach the success callback
+        // as a zeroed response, with the message left on an .Error nobody read.
+        var (credits, creditsError) = Capture<ZBCreditsResponse>((ok, fail) => client.GetCredits(ok, fail));
+        Assert.That(credits, Is.Null);
+        Assert.That(creditsError, Is.EqualTo("Invalid API key"));
+        Assert.That(client.LastApiError, Is.Not.Null);
+        Assert.That(client.LastApiError.StatusCode, Is.EqualTo(200));
+
+        var (validated, validateError) = Capture<ZBValidateResponse>((ok, fail) =>
+            client.Validate("person@example.com", "", ok, fail));
+        Assert.That(validated, Is.Null);
+        Assert.That(validateError, Is.EqualTo("Invalid API key"));
+    }
+
+    [Test]
+    public void AnErrorMessageOnlyBodyOnAnHttp200IsAnError()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "error-message-only-key");
+
+        var (credits, error) = Capture<ZBCreditsResponse>((ok, fail) => client.GetCredits(ok, fail));
+        Assert.That(credits, Is.Null);
+        Assert.That(error, Is.EqualTo("Invalid API key"));
+    }
+
+    [Test]
+    public void ABlankErrorFieldBesideAResultIsStillASuccess()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "blank-error-key");
+
+        // Only a non-empty "error" decides failure: a result that carries an empty
+        // one beside its data is still a result.
+        var (validated, error) = Capture<ZBValidateResponse>((ok, fail) =>
+            client.Validate("person@example.com", "", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(validated, Is.Not.Null);
+        Assert.That(validated!.Address, Is.EqualTo("person@example.com"));
+    }
+
+    [Test]
+    public void AMessageOnlyBodyIsAnErrorForATypedCall()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "message-only-key");
+
+        // LIVE: guessformat answers an invalid or drained key with an HTTP 200 and
+        // only {"Message": "..."}. No modelled response is made of message fields
+        // alone, so it used to come back as an empty finder result.
+        var (found, error) = Capture<ZBEmailFinderResponse>((ok, fail) =>
+            client.FindEmailByDomain("example.com", "Ada", "M", "Lovelace", ok, fail));
+        Assert.That(found, Is.Null);
+        Assert.That(error, Is.EqualTo("Invalid API key or your account ran out of credits"));
+        Assert.That(client.LastApiError, Is.Not.Null);
+        Assert.That(client.LastApiError.StatusCode, Is.EqualTo(200));
+    }
+
+    [Test]
+    public void AMessageBesideAResultIsStillASuccess()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "greylisted-key");
+
+        var (validated, error) = Capture<ZBValidateResponse>((ok, fail) =>
+            client.Validate("person@example.com", "", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(validated, Is.Not.Null);
+        Assert.That(validated!.Message, Is.EqualTo("Retry later"));
+    }
+
+    [Test]
+    public void AGreylistStillInProgressValidateIsAResult()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "greylist-pending-key");
+
+        // A repeated greylist_processing validate answers with nothing but
+        // "Message". That is the result ZBValidateResponse.Message exists for,
+        // so the message-only check must not apply to Validate.
+        var (validated, error) = Capture<ZBValidateResponse>((ok, fail) =>
+            client.Validate("person@example.com", "", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(validated, Is.Not.Null);
+        Assert.That(validated!.Message, Is.EqualTo("Greylist validation still in progress. Please try again later."));
+    }
+
+    [Test]
+    public void ACapitalisedErrorBodyIsAnErrorForTheFilters()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "capital-error-key");
+        const string drained = "Invalid API key or your account ran out of credits";
+
+        var (added, addError) = Capture<JObject>((ok, fail) => client.AddFilter("allow", "email", "x@example.com", ok, fail));
+        Assert.That(added, Is.Null);
+        Assert.That(addError, Is.EqualTo(drained));
+        var (deleted, deleteError) = Capture<JObject>((ok, fail) => client.DeleteFilter("allow", "email", "x@example.com", ok, fail));
+        Assert.That(deleted, Is.Null);
+        Assert.That(deleteError, Is.EqualTo(drained));
+        foreach (var usePost in new[] { false, true })
+        {
+            var (listed, listError) = Capture<JToken>((ok, fail) => client.ListFilters(usePost, ok, fail));
+            Assert.That(listed, Is.Null);
+            Assert.That(listError, Is.EqualTo(drained));
+        }
+    }
+
+    [Test]
+    public void AMessageOnlyBodyIsStillASuccessForAnUntypedCall()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "message-only-key");
+
+        // Untyped (JObject) calls are not judged by shape: an endpoint whose
+        // success is just a message must keep working.
+        var (webhook, error) = Capture<JObject>((ok, fail) => client.GetInboxPlacementWebhook(ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(webhook, Is.Not.Null);
     }
 
     [Test]
@@ -1742,6 +1869,246 @@ public class OfflineApiTests
         Assert.Throws<ZBClientException>(new TestDelegate(() => client.SetListEvaluatorBaseUrl("http://evil.example")));
     }
 
+    // -- LastApiError: the outcome of the most recent call -------------------
+
+    [Test]
+    public void SendFileLeavesUnsetBooleansToTheApiDefault()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "unset-bools");
+        var csv = WriteCsv();
+        try
+        {
+            // The sendfile docs give remove_duplicate a default of true. 2.x
+            // sent it only when set; sending false for an unset option would
+            // silently stop the de-duplication for every upgraded caller.
+            foreach (var scoring in new[] { false, true })
+            {
+                var options = new ZeroBounce.SendFileOptions { EmailAddressColumn = 1 };
+                var (_, error) = Capture<ZBSendFileResponse>((ok, fail) =>
+                {
+                    if (scoring) client.ScoringSendFile(csv, options, ok, fail);
+                    else client.SendFile(csv, options, ok, fail);
+                });
+                Assert.That(error, Is.Null);
+                var request = Only(api);
+                api.Clear();
+                Assert.That(request.Fields.ContainsKey("remove_duplicate"), Is.False);
+                Assert.That(request.Fields.ContainsKey("has_header_row"), Is.False);
+            }
+
+            var set = new ZeroBounce.SendFileOptions { EmailAddressColumn = 1, HasHeaderRow = true, RemoveDuplicate = true };
+            var (_, setError) = Capture<ZBSendFileResponse>((ok, fail) => client.SendFile(csv, set, ok, fail));
+            Assert.That(setError, Is.Null);
+            var sent = Only(api);
+            Assert.That(sent.Fields["remove_duplicate"], Is.EqualTo("true"));
+            Assert.That(sent.Fields["has_header_row"], Is.EqualTo("true"));
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
+    [Test]
+    public void ARejectedArgumentSetsLastApiErrorWithStatusZeroAndASuccessClearsIt()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "last-error-key");
+        var missing = TempPath("missing.csv");
+        var download = TempPath("download.csv");
+        Action<ZBSendFileResponse> sent = _ => Assert.Fail("success");
+        Action<JObject> obj = _ => Assert.Fail("success");
+
+        var calls = new List<(string Name, Action<Action<string>> Call)>
+        {
+            ("Validate timeout", fail => client.Validate("a@example.com", "", new ZBValidateOptions { Timeout = 1 }, _ => Assert.Fail("success"), fail)),
+            ("Validate callback_url", fail => client.Validate("a@example.com", "", new ZBValidateOptions { CallbackUrl = "https://example.com/cb" }, _ => Assert.Fail("success"), fail)),
+            ("Validate blank callback_url", fail => client.Validate("a@example.com", "", new ZBValidateOptions { CallbackUrl = " ", GreylistProcessing = true }, _ => Assert.Fail("success"), fail)),
+            ("ValidateBatch empty", fail => client.ValidateBatch(new List<ZBValidateEmailRow>(), _ => Assert.Fail("success"), fail)),
+            ("ValidateBatch blank row", fail => client.ValidateBatch(new List<ZBValidateEmailRow> { new() { EmailAddress = " " } }, _ => Assert.Fail("success"), fail)),
+            ("ValidateBatch timeout", fail => client.ValidateBatch(new List<ZBValidateEmailRow> { new() { EmailAddress = "a@example.com" } }, new ZBValidateOptions { Timeout = 5 }, _ => Assert.Fail("success"), fail)),
+            ("FindEmailByDomain", fail => client.FindEmailByDomain("", "Ada", _ => Assert.Fail("success"), fail)),
+            ("FindDomainByDomain", fail => client.FindDomainByDomain(" ", _ => Assert.Fail("success"), fail)),
+            ("FileStatus", fail => client.FileStatus("", _ => Assert.Fail("success"), fail)),
+            ("ScoringFileStatus", fail => client.ScoringFileStatus(" ", _ => Assert.Fail("success"), fail)),
+            ("GetFile", fail => client.GetFile("", download, _ => Assert.Fail("success"), fail)),
+            ("ScoringGetFile", fail => client.ScoringGetFile("", download, _ => Assert.Fail("success"), fail)),
+            ("DeleteFile", fail => client.DeleteFile("", _ => Assert.Fail("success"), fail)),
+            ("SendFile missing file", fail => client.SendFile(missing, new ZeroBounce.SendFileOptions(), sent, fail)),
+            ("ScoringSendFile missing file", fail => client.ScoringSendFile(missing, new ZeroBounce.SendFileOptions(), sent, fail)),
+            ("SendEmailFinderFile domain", fail => client.SendEmailFinderFile(new MemoryStream(), "f.csv", 0, new ZeroBounce.EmailFinderSendFileOptions { FirstNameColumn = 2 }, sent, fail)),
+            ("SendEmailFinderFile name", fail => client.SendEmailFinderFile(new MemoryStream(), "f.csv", 1, null, sent, fail)),
+            ("SendEmailFinderFile missing file", fail => client.SendEmailFinderFile(missing, 1, new ZeroBounce.EmailFinderSendFileOptions { FirstNameColumn = 2 }, sent, fail)),
+            ("EmailFinderFileStatus", fail => client.EmailFinderFileStatus("", _ => Assert.Fail("success"), fail)),
+            ("EmailFinderGetFile", fail => client.EmailFinderGetFile("", download, _ => Assert.Fail("success"), fail)),
+            ("EmailFinderDeleteFile", fail => client.EmailFinderDeleteFile("", _ => Assert.Fail("success"), fail)),
+            ("SendDomainSearchFile", fail => client.SendDomainSearchFile(new MemoryStream(), "f.csv", 0, null, sent, fail)),
+            ("DomainSearchGetFile", fail => client.DomainSearchGetFile(" ", download, _ => Assert.Fail("success"), fail)),
+            ("SendListEvaluatorFile", fail => client.SendListEvaluatorFile(new MemoryStream(), "f.csv", 0, sent, fail)),
+            ("GetListEvaluatorResult", fail => client.GetListEvaluatorResult("", obj, fail)),
+            ("SendEvaluatedFile", fail => client.SendEvaluatedFile(" ", sent, fail)),
+            ("AddFilter", fail => client.AddFilter("", "email", "a@example.com", obj, fail)),
+            ("DeleteFilter", fail => client.DeleteFilter("allow", "", "a@example.com", obj, fail)),
+            ("ValidateS3File null", fail => client.ValidateS3File(null!, sent, fail)),
+            ("ValidateS3File return_url", fail => client.ValidateS3File(new ZeroBounce.ValidateS3FileOptions { FileName = "f.csv" }, sent, fail)),
+            ("ScoreS3File", fail => client.ScoreS3File(new ZeroBounce.ScoreS3FileOptions { ReturnUrl = "https://example.com/r" }, sent, fail)),
+            ("ExportS3File", fail => client.ExportS3File("id", " ", sent, fail)),
+            ("EmailFinderS3File", fail => client.EmailFinderS3File(null!, sent, fail)),
+            ("ValidateSFTPFile", fail => client.ValidateSFTPFile(new ZeroBounce.BulkFileJobOptions { ReturnUrl = "https://example.com/r" }, sent, fail)),
+            ("ExportSFTPFile", fail => client.ExportSFTPFile("", null!, sent, fail)),
+            ("CreateInboxPlacementTest", fail => client.CreateInboxPlacementTest(" ", null!, obj, fail)),
+            ("GetInboxPlacementTest", fail => client.GetInboxPlacementTest(" ", obj, fail)),
+            ("ListInboxPlacementTests", fail => client.ListInboxPlacementTests(new ZeroBounce.ListInboxPlacementTestsOptions { Status = "paused" }, obj, fail)),
+            ("DeleteInboxPlacementTest", fail => client.DeleteInboxPlacementTest("", obj, fail)),
+            ("SetInboxPlacementWebhook", fail => client.SetInboxPlacementWebhook("", obj, fail)),
+        };
+
+        foreach (var (name, call) in calls)
+        {
+            var (_, okError) = Capture<ZBCreditsResponse>((ok, fail) => client.GetCredits(ok, fail));
+            Assert.That(okError, Is.Null, name);
+            Assert.That(client.LastApiError, Is.Null, name + ": a success leaves no error behind");
+            api.Clear();
+
+            string? error = null;
+            call(e => error = e);
+            Assert.That(error, Is.Not.Null.And.Not.Empty, name);
+            Assert.That(api.Count, Is.EqualTo(0), name + ": nothing is sent");
+            Assert.That(client.LastApiError, Is.Not.Null, name);
+            Assert.That(client.LastApiError!.Message, Is.EqualTo(error), name);
+            Assert.That(client.LastApiError.StatusCode, Is.EqualTo(0), name);
+        }
+        Assert.That(File.Exists(download), Is.False);
+    }
+
+    [Test]
+    public void AnUninitializedClientSetsLastApiError()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "");
+
+        var (_, error) = Capture<ZBCreditsResponse>((ok, fail) => client.GetCredits(ok, fail));
+        Assert.That(error, Does.Contain("not initialized"));
+        Assert.That(client.LastApiError!.Message, Is.EqualTo(error));
+        Assert.That(client.LastApiError.StatusCode, Is.EqualTo(0));
+        Assert.That(api.Count, Is.EqualTo(0));
+    }
+
+    [Test]
+    public void ADownloadBlockedByCloudflareSetsLastApiError()
+    {
+        var api = new FakeApiHandler();
+        var path = TempPath("blocked.csv");
+        foreach (var (key, status) in new[] { ("html-403-dl", 403), ("html-200-dl", 200) })
+        {
+            var client = new OfflineClient(api, key);
+            var downloads = new List<(string Name, Action<Action<string>> Call)>
+            {
+                ("GetFile", fail => client.GetFile("fid", path, _ => Assert.Fail("success"), fail)),
+                ("GetFile options", fail => client.GetFile("fid", path, new ZeroBounce.GetFileOptions { DownloadType = ZBDownloadType.Combined }, _ => Assert.Fail("success"), fail)),
+                ("ScoringGetFile", fail => client.ScoringGetFile("fid", path, _ => Assert.Fail("success"), fail)),
+                ("EmailFinderGetFile", fail => client.EmailFinderGetFile("fid", path, _ => Assert.Fail("success"), fail)),
+                ("DomainSearchGetFile", fail => client.DomainSearchGetFile("fid", path, _ => Assert.Fail("success"), fail)),
+            };
+            foreach (var (name, call) in downloads)
+            {
+                string? error = null;
+                call(e => error = e);
+                Assert.That(error, Does.Contain("HTML error page"), name);
+                Assert.That(client.LastApiError, Is.Not.Null, name);
+                Assert.That(client.LastApiError!.Message, Is.EqualTo(error), name);
+                Assert.That(client.LastApiError.StatusCode, Is.EqualTo(status), name);
+            }
+        }
+        Assert.That(File.Exists(path), Is.False);
+    }
+
+    [Test]
+    public void ADownloadThatSucceedsClearsLastApiError()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "download-after-error");
+        var path = TempPath("ok.csv");
+        try
+        {
+            var (_, rejected) = Capture<ZBGetFileResponse>((ok, fail) => client.GetFile(" ", path, ok, fail));
+            Assert.That(rejected, Is.Not.Null);
+            Assert.That(client.LastApiError, Is.Not.Null);
+
+            var (file, error) = Capture<ZBGetFileResponse>((ok, fail) => client.GetFile("fid", path, ok, fail));
+            Assert.That(error, Is.Null);
+            Assert.That(file!.LocalFilePath, Is.EqualTo(Path.GetFullPath(path)));
+            Assert.That(client.LastApiError, Is.Null);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public void ABatchAccountErrorSetsLastApiError()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "batch-account-last");
+
+        var (_, error) = Capture<ZBValidateBatchResponse>((ok, fail) =>
+            client.ValidateBatch(new List<ZBValidateEmailRow> { new() { EmailAddress = "a@example.com" } }, ok, fail));
+        Assert.That(error, Does.Contain("Invalid API Key"));
+        Assert.That(client.LastApiError!.Message, Is.EqualTo(error));
+        Assert.That(client.LastApiError.StatusCode, Is.EqualTo(200));
+    }
+
+    [Test]
+    public void AResponseThatIsNotJsonSetsLastApiError()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "malformed-last");
+
+        var calls = new List<(string Name, Action<Action<string>> Call)>
+        {
+            ("GetCredits", fail => client.GetCredits(_ => Assert.Fail("success"), fail)),
+            ("ListFilters", fail => client.ListFilters(false, _ => Assert.Fail("success"), fail)),
+            ("ListFilters post", fail => client.ListFilters(true, _ => Assert.Fail("success"), fail)),
+            ("AddFilter", fail => client.AddFilter("allow", "email", "a@example.com", _ => Assert.Fail("success"), fail)),
+            ("GetListEvaluatorResult", fail => client.GetListEvaluatorResult("fid", _ => Assert.Fail("success"), fail)),
+            ("ListS3Files", fail => client.ListS3Files(null!, null!, _ => Assert.Fail("success"), fail)),
+            ("GetInboxPlacementProviders", fail => client.GetInboxPlacementProviders(_ => Assert.Fail("success"), fail)),
+        };
+        foreach (var (name, call) in calls)
+        {
+            string? error = null;
+            call(e => error = e);
+            Assert.That(error, Does.Contain("not valid JSON"), name);
+            Assert.That(client.LastApiError, Is.Not.Null, name);
+            Assert.That(client.LastApiError!.Message, Is.EqualTo(error), name);
+            Assert.That(client.LastApiError.StatusCode, Is.EqualTo(200), name);
+        }
+    }
+
+    [Test]
+    public void ANon2xxSendFileReachesTheFailureCallbackWithItsStatus()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "bad-request-sendfile");
+        var csv = WriteCsv();
+        try
+        {
+            // 2.x deserialized any body into the success callback, so a 400
+            // with success: false arrived there as a result.
+            var (response, error) = Capture<ZBSendFileResponse>((ok, fail) =>
+                client.SendFile(csv, new ZeroBounce.SendFileOptions { EmailAddressColumn = 1 }, ok, fail));
+            Assert.That(response, Is.Null);
+            Assert.That(error, Does.Contain("duplicates"));
+            Assert.That(client.LastApiError!.StatusCode, Is.EqualTo(400));
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
     private static (T? Response, string? Error) Capture<T>(Action<Action<T>, Action<string>> call) where T : class
     {
         T? response = null;
@@ -1947,6 +2314,45 @@ public class OfflineApiTests
                 return Text(HttpStatusCode.OK,
                     "{\"success\":false,\"message\":\"File cannot be found.\"}", "application/json");
             }
+            if (key.StartsWith("error-only-", StringComparison.Ordinal))
+            {
+                // LIVE: an invalid or drained key answers every v2 endpoint with an
+                // HTTP 200 whose body is nothing but an error, and no "success" field.
+                return Text(HttpStatusCode.OK, "{\"error\":\"Invalid API key\"}", "application/json");
+            }
+            if (key.StartsWith("message-only-", StringComparison.Ordinal))
+            {
+                // LIVE: guessformat answers an invalid or drained key this way.
+                return Text(HttpStatusCode.OK,
+                    "{\"Message\":\"Invalid API key or your account ran out of credits\"}", "application/json");
+            }
+            if (key.StartsWith("greylisted-", StringComparison.Ordinal))
+            {
+                // A validate still being greylist-processed carries "Message" beside its result.
+                return Text(HttpStatusCode.OK,
+                    "{\"address\":\"person@example.com\",\"status\":\"unknown\",\"sub_status\":\"greylisted\",\"Message\":\"Retry later\"}",
+                    "application/json");
+            }
+            if (key.StartsWith("greylist-pending-", StringComparison.Ordinal))
+            {
+                // The documented answer to a repeated greylist_processing validate:
+                // a result whose only field is Message, not an error.
+                return Text(HttpStatusCode.OK,
+                    "{\"Message\":\"Greylist validation still in progress. Please try again later.\"}", "application/json");
+            }
+            if (key.StartsWith("capital-error-", StringComparison.Ordinal))
+            {
+                // LIVE: the filters answer an invalid or drained key with an HTTP 200
+                // and a capitalised "Error", no "success" field.
+                return Text(HttpStatusCode.OK,
+                    "{  \"Error\": \"Invalid API key or your account ran out of credits\"}", "application/json");
+            }
+            if (key.StartsWith("error-message-only-", StringComparison.Ordinal))
+                return Text(HttpStatusCode.OK, "{\"error_message\":\"Invalid API key\"}", "application/json");
+            if (key.StartsWith("blank-error-", StringComparison.Ordinal))
+                return Text(HttpStatusCode.OK,
+                    "{\"address\":\"person@example.com\",\"status\":\"valid\",\"sub_status\":\"\",\"error\":\"\"}",
+                    "application/json");
             if (key.StartsWith("empty-", StringComparison.Ordinal))
                 return Text(HttpStatusCode.OK, "", "application/json");
             if (key.StartsWith("malformed-", StringComparison.Ordinal))
@@ -1967,6 +2373,13 @@ public class OfflineApiTests
                 // LIVE: the Inbox Placement Tester's delete answers HTTP 204
                 // with no body at all.
                 return new HttpResponseMessage(HttpStatusCode.NoContent) { Content = null };
+            }
+            if (key.StartsWith("bad-request-", StringComparison.Ordinal))
+            {
+                // The docs describe a 400 when de-duplication would remove more
+                // than half of the file. The wording here is made up.
+                return Text(HttpStatusCode.BadRequest,
+                    "{\"success\":false,\"message\":\"More than 50% of the file are duplicates\"}", "application/json");
             }
             if (key.StartsWith("double-error-", StringComparison.Ordinal))
                 return Text(HttpStatusCode.BadRequest, "Error: Error: api_key is invalid", "text/plain");

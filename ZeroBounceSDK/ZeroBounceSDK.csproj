@@ -3,19 +3,18 @@
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-        <Title>ZeroBounceSDK</Title>
+        <Title>ZeroBounce.SDK</Title>
         <Authors>ZeroBounceIntegrations</Authors>
-		<License>MIT</License>
-		<PackageVersion>2.1.6</PackageVersion>
-		<Version>2.1.5</Version>
+		<PackageVersion>3.0.0</PackageVersion>
+		<Version>3.0.0</Version>
 		<Company>ZeroBounce</Company>
-		<Description>Official C# ZeroBounce SDK</Description>
+		<Description>Official ZeroBounce SDK for .NET: email validation and verification, AI scoring, email finder and domain search, bulk files, the Inbox Placement Tester and the Warmup API.</Description>
 		<PackageProjectUrl>https://www.zerobounce.net/</PackageProjectUrl>
 		<PackageIcon>zerobounce-logo.png</PackageIcon>
 		<PackageReadmeFile>README.md</PackageReadmeFile>
 		<RepositoryUrl>https://github.com/zerobounce/zero-bounce-csharp-sdk-setup</RepositoryUrl>
 		<RepositoryType>git</RepositoryType>
-		<PackageTags>zerobounce</PackageTags>
+		<PackageTags>zerobounce;email-validation;email-verification;email-verifier;email-finder;ai-scoring;deliverability;sdk;api</PackageTags>
 		<PackageId>ZeroBounce.SDK</PackageId>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
     </PropertyGroup>

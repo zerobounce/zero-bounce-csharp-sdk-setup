@@ -1,14 +1,23 @@
 #### INSTALLATION
-You can install by searching for ZeroBounceSDK in NuGet package manager browser or just use the this command:
+You can install by searching for ZeroBounce.SDK in the NuGet package manager browser, or run:
 ```bash
+dotnet add package ZeroBounce.SDK
+```
+
+From the Visual Studio Package Manager Console:
+```powershell
 Install-Package ZeroBounce.SDK
 ```
 
 #### USAGE
-Import the sdk in your file:
+Import the sdk in your file, and the namespaces the examples below use:
 ```c#
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;    // Debug.WriteLine in the examples below
+using Newtonsoft.Json.Linq;  // JObject / JToken results of the newer endpoints
 using ZeroBounceSDK;
-``` 
+```
 
 Initialize the sdk with your api key and preferred api:
 ```c#
@@ -74,8 +83,8 @@ ZeroBounce.Instance.GetCredits(
 
 * ##### Check your API usage for a given period of time
 ```c#
-var startDate = new DateTime();    // The start date of when you want to view API usage
-var endDate = new DateTime();      // The end date of when you want to view API usage
+var startDate = new DateTime(2024, 01, 01); // The start date of when you want to view API usage
+var endDate = new DateTime(2024, 01, 31);   // The end date of when you want to view API usage
 
 ZeroBounce.Instance.GetApiUsage(startDate, endDate,
     response =>
@@ -108,7 +117,7 @@ ZeroBounce.Instance.GetActivity(email,
 ```
 
 * ##### Use the Email Finder API endpoint to identify the correct email format when you provide a name and email domain or company name.
-```c###
+```csharp
 var domain = "example.com";  // The email domain for which to find the email format.
 var companyName = "Example"; // The company name for which to find the email format.
 var firstName = "john";      // The first name of the person whose email format is being searched.
@@ -141,7 +150,7 @@ ZeroBounce.Instance.FindEmailByCompanyName(companyName, firstName, middleName, l
 ```
 
 * ##### Use the Domain Search API endpoint to identify the email domain when you provide a domain or company name.
-```c###
+```csharp
 var domain = "example.com";  // The email domain for which to find the email format.
 var companyName = "Example"; // The company name for which to find the email format.
 
@@ -173,7 +182,7 @@ ZeroBounce.Instance.FindDomainByCompanyName(companyName,
 * ##### The sendfile API allows user to send a file for bulk email validation
 ```c#
 var filePath = "<FILE_PATH>"; // The csv or txt file
-var options = new SendFileOptions();
+var options = new ZeroBounce.SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
 options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
@@ -181,8 +190,8 @@ options.FirstNameColumn = 4;            // The index of "first name" column in t
 options.LastNameColumn = 5;             // The index of "last name" column in the file
 options.GenderColumn = 6;               // The index of "gender" column in the file
 options.IpAddressColumn = 7;            // The index of "IP address" column in the file
-options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
-options.RemoveDuplicate = false;        // If you want the system to remove duplicate emails (true or false, default is true). Please note that if we remove more than 50% of the lines because of duplicates (parameter is true), system will return a 400 bad request error as a safety net to let you know that more than 50% of the file has been modified.
+options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers. Left unset, it is not sent.
+options.RemoveDuplicate = false;        // If you want the system to remove duplicate emails (true or false, default is true). Left unset, it is not sent and the API removes duplicates. Please note that if we remove more than 50% of the lines because of duplicates (parameter is true), system will return a 400 bad request error as a safety net to let you know that more than 50% of the file has been modified.
 // Optional phase 2 (catch-all) after phase 1 — [v2 send file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-send-file)
 options.AllowPhase2 = true;
 
@@ -224,6 +233,9 @@ ZeroBounce.Instance.GetFile(fileId, localDownloadPath,
 Optional `download_type` and `activity_data` (validation only for `activity_data`):
 
 ```c#
+var fileId = "<FILE_ID>";
+var localDownloadPath = "<FILE_DOWNLOAD_PATH>";
+
 ZeroBounce.Instance.GetFile(
     fileId,
     localDownloadPath,
@@ -276,7 +288,7 @@ ZeroBounce.Instance.DeleteFile(fileId,
 ```c#
 var filePath = "<FILE_PATH>"; // The csv or txt file
 
-var options = new SendFileOptions();
+var options = new ZeroBounce.SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
 options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
@@ -317,6 +329,9 @@ ZeroBounce.Instance.ScoringGetFile(fileId, localDownloadPath,
 ```
 
 ```c#
+var fileId = "<FILE_ID>";
+var localDownloadPath = "<FILE_DOWNLOAD_PATH>";
+
 ZeroBounce.Instance.ScoringGetFile(
     fileId,
     localDownloadPath,
@@ -386,6 +401,10 @@ without `GreylistProcessing = true` — before any request is sent. While that
 retry is still running the API answers with a `Message` instead of a result,
 which lands on `response.Message`.
 
+`ValidateBatch` takes the same `ZBValidateOptions`, but sends only `Timeout`
+(10-120 seconds there), `ActivityData` and `VerifyPlus`. It ignores `UsePost`,
+`DomainInfo`, `GreylistProcessing` and `CallbackUrl` without checking them.
+
 ## S3 and SFTP/FTP bulk
 
 Queue a job on a file that already sits in your Amazon S3 bucket, or on your
@@ -393,30 +412,59 @@ SFTP/FTP server. See the [S3](https://www.zerobounce.net/docs/api-integrations/a
 and [SFTP](https://www.zerobounce.net/docs/api-integrations/sftp_bulk_api) docs.
 These live on the bulkapi host *without* the `/v2` path.
 
+The examples from here on pass `ok` and `error` for the two callbacks. Any
+lambda or method of the right type will do; for example:
+
+```csharp
+void ok<T>(T response) => Console.WriteLine(response);
+void error(string message) => Console.WriteLine(message);
+```
+
 ```csharp
 var zb = ZeroBounce.Instance;
 
 // Amazon S3. FileName is the full path, as returned by ListS3Files.
-zb.EmailFinderS3File(
-    new ZeroBounce.BulkFileJobOptions { FileName = "lists/leads.csv", HasHeaderRow = true },
-    ok, error);
+// FileName and ReturnUrl are required on every one of these jobs.
+var s3 = new ZeroBounce.BulkFileJobOptions
+{
+    FileName = "lists/leads.csv",
+    HasHeaderRow = true,
+    ReturnUrl = "https://example.com/zerobounce-done"
+};
+zb.EmailFinderS3File(s3, ok, error);
+zb.DomainSearchS3File(s3, ok, error);
 
-zb.DomainSearchS3File(
-    new ZeroBounce.BulkFileJobOptions
-    {
-        FileName = "lists/leads.csv",
-        RemoveDuplicates = true,
-        ReturnUrl = "https://example.com/zerobounce-done"
-    },
-    ok, error);
+// Validate and score take the same two required fields, plus their own.
+zb.ValidateS3File(new ZeroBounce.ValidateS3FileOptions
+{
+    FileName = "lists/leads.csv",
+    ReturnUrl = "https://example.com/zerobounce-done",
+    HasHeaderRow = true,
+    EmailAddressColumn = 1
+}, ok, error);
+
+zb.ScoreS3File(new ZeroBounce.ScoreS3FileOptions
+{
+    FileName = "lists/leads.csv",
+    ReturnUrl = "https://example.com/zerobounce-done",
+    HasHeaderRow = true
+}, ok, error);
+
+zb.ExportS3File("<FILE_ID>", "bucket-out", ok, error);
 
 // SFTP/FTP. The server, path and protocol come from your ZeroBounce settings.
-// FileName may be left null for ValidateSFTPFile alone, which then uses the
-// input bucket from those settings.
-zb.ValidateSFTPFile(new ZeroBounce.BulkFileJobOptions { HasHeaderRow = true }, ok, error);
-zb.ScoreSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
-zb.EmailFinderSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
-zb.DomainSearchSFTPFile(new ZeroBounce.BulkFileJobOptions { FileName = "my_file.txt" }, ok, error);
+// The docs list FileName as optional for ValidateSFTPFile, but the live API
+// requires it there too.
+var sftp = new ZeroBounce.BulkFileJobOptions
+{
+    FileName = "my_file.txt",
+    HasHeaderRow = true,
+    ReturnUrl = "https://example.com/zerobounce-done"
+};
+zb.ValidateSFTPFile(sftp, ok, error);
+zb.ScoreSFTPFile(sftp, ok, error);
+zb.EmailFinderSFTPFile(sftp, ok, error);
+zb.DomainSearchSFTPFile(sftp, ok, error);
 
 // Note the field: this one takes export_path, not export_bucket.
 // null uses the export path from your settings.
@@ -425,8 +473,8 @@ zb.ExportSFTPFile("<FILE_ID>", "/exports", ok, error);
 
 ## Inbox Placement Tester
 
-Runs on its own host, takes the API key on the query string, and sends camelCase
-JSON bodies. It spends the account's inbox-test credits.
+Runs on its own host, authenticates with an `Authorization: Bearer` header, and
+sends camelCase JSON bodies. It spends the account's inbox-test credits.
 
 ```csharp
 var zb = ZeroBounce.Instance;

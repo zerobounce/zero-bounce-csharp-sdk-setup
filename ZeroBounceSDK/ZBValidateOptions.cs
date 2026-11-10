@@ -1,9 +1,14 @@
 namespace ZeroBounceSDK
 {
-    /// <summary>Optional query/body parameters for validate and validatebatch.</summary>
+    /// <summary>
+    /// Optional parameters for <c>Validate</c> and <c>ValidateBatch</c>.
+    /// <c>ValidateBatch</c> sends only <see cref="Timeout"/>,
+    /// <see cref="ActivityData"/> and <see cref="VerifyPlus"/>; the other
+    /// options apply to <c>Validate</c> alone and the batch ignores them.
+    /// </summary>
     public class ZBValidateOptions
     {
-        /// <summary>Validation timeout in seconds (3–60 for single validate).</summary>
+        /// <summary>Validation timeout in seconds: 3–60 for Validate, 10–120 for ValidateBatch.</summary>
         public int? Timeout { get; set; }
 
         /// <summary>Maps to activity_data.</summary>

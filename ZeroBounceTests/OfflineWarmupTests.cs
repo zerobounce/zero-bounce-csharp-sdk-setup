@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using ZeroBounceSDK;
 
@@ -551,6 +552,98 @@ public class OfflineWarmupTests
         Assert.That(error, Does.Not.Contain("bob"));
         // LIVE: a failed SMTP login comes back as a 500, not a 4xx.
         Assert.That(client.LastApiError!.StatusCode, Is.EqualTo(500));
+    }
+
+    [Test]
+    public void SmtpCredentialsAreMaskedInARawJsonErrorBody()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+
+        // A 500 whose JSON has no error, message or detail key is passed on as
+        // it came, so the credentials in it are JSON-escaped: a " or \ in the
+        // password, or a non-ASCII character a serializer escapes.
+        foreach (var (password, username) in new[]
+                 {
+                     ("pa\"ss\\word", "bob"),
+                     ("päss/wörd<1>", "böb\"o"),
+                 })
+        {
+            foreach (var escaping in new[] { StringEscapeHandling.Default, StringEscapeHandling.EscapeNonAscii, StringEscapeHandling.EscapeHtml })
+            {
+                var body = "{\"smtp\":{\"login\":" + JsonConvert.ToString(username, '"', escaping)
+                           + ",\"pass\":" + JsonConvert.ToString(password, '"', escaping) + "},\"ok\":false}";
+                api.ReplyWith(HttpStatusCode.InternalServerError, body, "application/json");
+                var (_, error) = Capture<JToken>((ok, fail) =>
+                    client.TestSmtpConfiguration("a@b.com", username, password, "smtp.example.com", 587, ok, fail));
+                Assert.That(error, Is.Not.Null);
+                var escapedPassword = JsonConvert.ToString(password, '"', escaping).Trim('"');
+                var escapedUser = JsonConvert.ToString(username, '"', escaping).Trim('"');
+                Assert.That(error, Does.Not.Contain(password), body);
+                Assert.That(error, Does.Not.Contain(escapedPassword), body);
+                Assert.That(error, Does.Not.Contain(username), body);
+                Assert.That(error, Does.Not.Contain(escapedUser), body);
+                Assert.That(error, Does.Contain("***"));
+                Assert.That(client.LastApiError!.Message, Is.EqualTo(error));
+                Assert.That(client.LastApiError.StatusCode, Is.EqualTo(500));
+            }
+        }
+
+        // Text that quotes the password JSON-escaped is masked as well.
+        api.ReplyWith(HttpStatusCode.InternalServerError, "login rejected for \"pa\\\"ss\\\\word\"", "text/plain");
+        var (_, cut) = Capture<JToken>((ok, fail) =>
+            client.TestSmtpConfiguration("a@b.com", "bob", "pa\"ss\\word", "smtp.example.com", 587, ok, fail));
+        Assert.That(cut, Does.Not.Contain("pa\\\"ss\\\\word"));
+        Assert.That(cut, Does.Contain("***"));
+    }
+
+    [Test]
+    public void AnHtmlPageWithStatus200IsNotACsvDownload()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+        const string page = "<!DOCTYPE html><html><head><title>Just a moment...</title></head><body>challenge</body></html>";
+
+        foreach (var contentType in new[] { "text/html", "text/csv" })
+        {
+            api.ReplyWith(HttpStatusCode.OK, page, contentType);
+            string? csv = null;
+            string? error = null;
+            client.DownloadSeeds(value => csv = value, e => error = e);
+            Assert.That(csv, Is.Null, contentType);
+            Assert.That(error, Does.Contain("HTML error page"), contentType);
+            Assert.That(client.LastApiError!.StatusCode, Is.EqualTo(200));
+
+            api.ReplyWith(HttpStatusCode.OK, page, contentType);
+            csv = null;
+            error = null;
+            client.DownloadStatistics("a@b.com", value => csv = value, e => error = e);
+            Assert.That(csv, Is.Null, contentType);
+            Assert.That(error, Does.Contain("HTML error page"), contentType);
+        }
+    }
+
+    [Test]
+    public void ASuccessClearsLastApiError()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+
+        api.ReplyWith((HttpStatusCode)429, "{\"message\":\"slow down\"}", "application/json");
+        Capture<JToken>((ok, fail) => client.GetSeeds(ok, fail));
+        Assert.That(client.LastApiError!.StatusCode, Is.EqualTo(429));
+
+        var (_, error) = Capture<JToken>((ok, fail) => client.GetSeeds(ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(client.LastApiError, Is.Null);
+
+        Capture<JToken>((ok, fail) => client.GetStatistics(" ", ok, fail));
+        Assert.That(client.LastApiError!.StatusCode, Is.EqualTo(0));
+        api.ReplyWith(HttpStatusCode.OK, "email\nseed@example.com\n", "text/csv");
+        string? csv = null;
+        client.DownloadSeeds(value => csv = value, Fail);
+        Assert.That(csv, Does.Contain("seed@example.com"));
+        Assert.That(client.LastApiError, Is.Null);
     }
 
     [Test]

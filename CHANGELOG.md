@@ -7,40 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-11-11
+
 ### Added
 
-- `Validate` and `ValidateBatch` take `ZBValidateOptions`: `Timeout`, `ActivityData`, `VerifyPlus`, and `UsePost` (form-encoded `POST /validate`).
-- `ZBValidateResponse` reads `active_in_days` and `active_first_seen`.
+- `Validate` takes `ZBValidateOptions`: `Timeout` (3–60 seconds), `ActivityData`, `VerifyPlus`, `DomainInfo`, `GreylistProcessing`, `CallbackUrl`, and `UsePost` (form-encoded `POST /validate`). An option left `null` is not sent. A timeout outside 3–60 seconds is rejected before a request is sent. `CallbackUrl` needs `GreylistProcessing = true` and is rejected without it, and when blank, before a request is sent.
+- `ValidateBatch` takes `ZBValidateOptions` too, but sends only `Timeout` (10–120 seconds, rejected outside that range before a request is sent, and sent as a JSON string because the live API rejects a number), `ActivityData` and `VerifyPlus`. It ignores `UsePost`, `DomainInfo`, `GreylistProcessing` and `CallbackUrl` without checking them.
+- `ZBValidateResponse` reads `active_in_days`, `active_first_seen`, `domain_website_exists`, `domain_registrant_company_name` and `Message`. `Message` is returned instead of a result while a greylist retry is still running.
+- `ZBValidateSubStatus.AiAgentMailbox`, read from `ai_agent_mailbox`. 2.x read that sub-status as `None`.
 - `ScoreEmail` (`GET /v2/scoring`) and `ScoreEmailPost` (form-encoded `POST /v2/scoring`).
 - Bulk email finder (`SendEmailFinderFile`, `EmailFinderFileStatus`, `EmailFinderGetFile`, `EmailFinderDeleteFile`). `SendEmailFinderFile` needs a name to work from, so `EmailFinderSendFileOptions.FirstNameColumn` or `FullNameColumn` is required alongside the domain column, and a call without either is rejected before the upload.
-- Bulk domain search (`SendDomainSearchFile`, `DomainSearchFileStatus`, `DomainSearchGetFile`, `DomainSearchDeleteFile`).
-- List evaluator (`SendListEvaluatorFile`, `GetListEvaluatorResult`, `SendEvaluatedFile`).
-- Filters (`AddFilter`, `ListFilters`, `DeleteFilter`).
-- S3 bulk (`ValidateS3File`, `ScoreS3File`, `ExportS3File`, `ListS3Files`, `EmailFinderS3File`, `DomainSearchS3File`). `ValidateS3FileOptions` and `ScoreS3FileOptions` take `FileName` and `ReturnUrl`; both are required.
-- SFTP/FTP bulk (`ValidateSFTPFile`, `ScoreSFTPFile`, `EmailFinderSFTPFile`, `DomainSearchSFTPFile`, `ExportSFTPFile`), sharing the new `BulkFileJobOptions`. The server, path and protocol come from your ZeroBounce settings. `ValidateSFTPFile`'s `FileName` is optional; `ExportSFTPFile` takes `export_path` rather than the `export_bucket` `ExportS3File` sends.
-- `ZBValidateOptions` accepts `DomainInfo`, `GreylistProcessing` and `CallbackUrl`. `CallbackUrl` needs `GreylistProcessing = true` and is rejected without it, and when blank, before a request is sent.
-- `ZBValidateResponse` reads `domain_website_exists`, `domain_registrant_company_name` and `Message`. `Message` is returned instead of a result while a greylist retry is still running.
-- Inbox Placement Tester on `https://bulkapi.zerobounce.net/api/ipt`: `GetInboxPlacementProviders`, `GetInboxPlacementTestTypes`, `CreateInboxPlacementTest`, `GetInboxPlacementTest`, `ListInboxPlacementTests`, `DeleteInboxPlacementTest`, `GetInboxPlacementWebhook`, `SetInboxPlacementWebhook`. Bodies are camelCase JSON, and unset fields are left out. `CreateInboxPlacementTest` rejects a name over 64 characters, a `TestType` other than 1, 2 or 3, and a `TestType` of 1 without a `SenderEmail`, before a request is sent.
+- Bulk domain search (`SendDomainSearchFile`, `DomainSearchFileStatus`, `DomainSearchGetFile`, `DomainSearchDeleteFile`). Both bulk finder and domain search send `has_header_row` only when `HasHeaderRow` is set, as `true` or `false`.
+- List evaluator (`SendListEvaluatorFile`, `GetListEvaluatorResult`, `SendEvaluatedFile`). It has its own base URL (`.../v2/listevaluator`), and the file id is URL-encoded as one path segment. `SendEvaluatedFile(fileId)` stays on the bulk base and posts the list evaluator's `file_id` as a form field, because the endpoint rejects a file upload with "file_id: This field is required".
+- Filters (`AddFilter`, `ListFilters`, `DeleteFilter`). An invalid or drained key, which the filters answer with an HTTP 200 and `{"Error": ...}`, reaches the failure callback.
+- S3 bulk (`ValidateS3File`, `ScoreS3File`, `ExportS3File`, `ListS3Files`, `EmailFinderS3File`, `DomainSearchS3File`). `ExportS3File`'s `exportBucket` is optional: `null` uses the export bucket from your ZeroBounce settings, and a blank string is rejected. `ValidateS3File` and `ScoreS3File` send `remove_duplicates` only when `RemoveDuplicates` is set.
+- SFTP/FTP bulk (`ValidateSFTPFile`, `ScoreSFTPFile`, `EmailFinderSFTPFile`, `DomainSearchSFTPFile`, `ExportSFTPFile`), sharing the new `BulkFileJobOptions`. The server, path and protocol come from your ZeroBounce settings. `ExportSFTPFile` takes `export_path` rather than the `export_bucket` `ExportS3File` sends.
+- All eight S3 and SFTP/FTP file jobs require `file_name` and `return_url`, and reject a call without either before a request is sent. That includes `ValidateSFTPFile`, although the docs list `file_name` as optional there: without it, or without `return_url` (`Provided return URL is not permitted: None`), the live API rejects the job.
+- Inbox Placement Tester on `https://bulkapi.zerobounce.net/api/ipt`: `GetInboxPlacementProviders`, `GetInboxPlacementTestTypes`, `CreateInboxPlacementTest`, `GetInboxPlacementTest`, `ListInboxPlacementTests`, `DeleteInboxPlacementTest`, `GetInboxPlacementWebhook`, `SetInboxPlacementWebhook`. It authenticates with an `Authorization: Bearer` header, so the key never reaches a logged query string. Bodies are camelCase JSON, and unset fields are left out. Its errors, which come under a `detail` key, reach the failure callback with that text. `CreateInboxPlacementTest` rejects a name over 64 characters, a `TestType` other than 1, 2 or 3, and a `TestType` of 1 without a `SenderEmail`, before a request is sent. `ListInboxPlacementTests` calls `GET /tests` and sends the page size as `page_size` (the API ignores `pageSize`). `DeleteInboxPlacementTest` reports the empty HTTP 204 the API answers with as a success.
 - `ListInboxPlacementTestsOptions.CreatedAfter` and `CreatedBefore`, sent as `createdAfter` and `createdBefore`. `Status` must be `running` or `finished` and `PageSize` must be between 1 and 100; both are checked before a request is sent.
 - `SetListEvaluatorBaseUrl` and `SetInboxPlacementBaseUrl`.
-- `ZeroBounceWarmup`, a client for the Warmup API. It is a separate product with its own host (`https://warmup-api.zerobounce.net`), its own team-scoped key sent in an `API-Key` header, and all 26 documented endpoints, including the seed-list and statistics CSV downloads.
-- `ZBApiError` and `LastApiError` on both clients: the short message the failure callback was given, plus the HTTP status, so callers can tell a Cloudflare 403 from an API 400/404 and a Warmup 429.
+- `ZeroBounceWarmup`, a client for the Warmup API. It is a separate product with its own host (`https://warmup-api.zerobounce.net`), its own team-scoped key sent in an `API-Key` header, and all 26 documented endpoints, including the seed-list and statistics CSV downloads; an HTML page is an error there, not CSV. A key with surrounding whitespace or control characters is rejected, because the transport would otherwise quote it unredacted in its own error, and a custom base URL must be `https://`. `TestSmtpConfiguration` masks the username and password, including their JSON-escaped forms, out of every error it raises.
+- `ZBApiError` and `LastApiError` on both clients. `LastApiError` describes the most recent call: `null` after a success, otherwise the short message the failure callback was given plus the HTTP status, so callers can tell a Cloudflare 403 from an API 400/404 and a Warmup 429. The status is `0` when the failure never reached the API (a rejected argument, a missing file, or a transport error).
 - An opt-in live API suite, the `ZeroBounceLiveApi` project. It is not in the solution, so `dotnet build` and `dotnet test` never build or run it; it needs keys in the environment, and only spends credits or changes the account behind `ZEROBOUNCE_LIVE_SPEND=1` and `ZEROBOUNCE_LIVE_CHANGES=1`.
 
 ### Changed
 
-- The list evaluator uses its own base URL (`.../v2/listevaluator`) instead of building the path from the bulk base, and the file id is URL-encoded as one path segment. `SendEvaluatedFile` stays on the bulk base.
-- `ExportS3File`'s `exportBucket` is optional, matching the documented endpoint: passing `null` uses the export bucket from your ZeroBounce settings. A blank string is still rejected.
-- API requests time out after 120 seconds and do not follow redirects.
-- A custom API base URL must start with `https://`.
-- `ValidateBatch` sends `timeout` as a JSON string. Sent as a number, the live API rejects the whole batch with an account-level error.
-- The Inbox Placement Tester authenticates with an `Authorization: Bearer` header instead of an `api_key` parameter, so the key no longer reaches a query string that gets logged, and `ListInboxPlacementTests` calls `GET /tests`. `GET /test` answers `Method "GET" not allowed`.
-- `SendEvaluatedFile(fileId)` posts the list evaluator's `file_id` as a form field. The endpoint rejects a file upload with "file_id: This field is required", so it no longer takes a path or a stream.
-- All eight S3 and SFTP/FTP file jobs require `file_name` and `return_url`, `ValidateS3File`, `ScoreS3File` and `ValidateSFTPFile` included, although the docs list `file_name` as optional for the last one. Without `return_url` the API answers `Provided return URL is not permitted: None`.
-- `ValidateS3File` and `ScoreS3File` no longer send `remove_duplicate` (singular) beside the documented `remove_duplicates`, and `ValidateS3FileOptions.RemoveDuplicate` / `ScoreS3FileOptions.RemoveDuplicate` are gone. Use `RemoveDuplicates`.
-- `ListInboxPlacementTests` sends the page size as `page_size`. As `pageSize` the API silently ignored it and returned the whole list.
-- `DeleteInboxPlacementTest` reports the empty HTTP 204 the API answers with as a success. It used to reach the failure callback as an empty response.
+- **Breaking:** a non-2xx response to `SendFile`, `ScoringSendFile` or `ValidateBatch` reaches the failure callback, with the API's own message. 2.x deserialized whatever came back into the success callback, so a 400 with `{"success": false, ...}` arrived there as a result.
+- **Breaking:** `SendFileOptions.HasHeaderRow` and `SendFileOptions.RemoveDuplicate` are `bool?` instead of `bool`. Left unset, they are still not sent, as in 2.x, so the API default applies (the sendfile docs give `remove_duplicate` a default of `true`). Set, they are sent as `true` or `false`; 2.x could not send `false`. Code that reads either field as a `bool` needs a change, and code compiled against 2.x must be recompiled.
+- **Breaking:** a custom API base URL must start with `https://`; `Initialize` throws `ZBClientException` otherwise.
+- API requests time out after 120 seconds, do not follow redirects, and send `User-Agent: ZeroBounceSDK/3.0.0`.
 - Query values, including the API key, email, and file id, are percent-encoded.
+- `ScoringSendFile` no longer sends the first name, last name, gender or IP address column.
+- The NuGet package title is `ZeroBounce.SDK`, matching the package id (2.x showed `ZeroBounceSDK`), and the package has a fuller description and search tags beyond `zerobounce`.
 
 ### Removed
 
@@ -49,24 +47,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - The api-usage response now reads `sub_status_leading_period_removed` and `sub_status_alias_address`, two counters the API returns that were silently discarded.
-
 - `{"success": false}` on an HTTP 200 reaches the failure callback instead of the success one. The API answers an unknown bulk file id that way.
-- An error body whose JSON carries a `detail` string (the Inbox Placement Tester, a Django REST framework app) now surfaces that text.
-
-- A 403 HTML "Access denied" page is returned as a short error. An HTML page with status 200 is an error as well, including `GetFile`, `EmailFinderGetFile`, and `DomainSearchGetFile`, instead of a saved file or a JSON parse.
+- An HTTP 200 whose JSON body carries a non-empty `error`, `error_message` or `Error` field and no `success` field reaches the failure callback with the API's own message. An invalid or drained key answers `Validate` and `GetActivity` that way with `{"error": "Invalid API key or your account ran out of credits"}`, and `GetApiUsage` with `{"error": "Invalid API key"}`; each used to reach the success callback as an empty response. `message`, `Message` and `detail` cannot decide failure on their own, because successful responses use them too: a bulk submit answers `{"success": true, "message": "File Accepted"}`, and a repeated `greylist_processing` validate answers `{"Message": "Greylist validation still in progress. Please try again later."}`, which is a result.
+- The email finder and domain search report a body made only of message fields as a failure. They answer an invalid key with `{"Message": "Invalid API key or your account ran out of credits"}` and nothing else, which used to come back as an empty `ZBEmailFinderResponse` or `ZBDomainSearchResponse`. `GetCredits` still answers `-1` for an invalid key, as documented.
+- A 403 HTML "Access denied" page is returned as a short error. An HTML page with status 200 is an error as well, including from `GetFile` and `ScoringGetFile`, instead of a saved file or a JSON parse.
 - Empty and non-JSON bodies are a short error. The message is no longer the Newtonsoft parse text, and a repeated `Error:` / `[Error]:` prefix is removed.
 - `ValidateBatch` reports an account-level failure (HTTP 200, error for address `all`, such as an invalid API key or no credits) through the failure callback. An error for one address stays on the successful result.
-- `SendFile` and `ScoringSendFile` send `has_header_row` and `remove_duplicate` as `true` or `false`. Bulk email finder and domain search send `has_header_row` when it is set to false.
-- `ScoringSendFile` does not send first name, last name, gender, IP address, or `allow_phase_2`.
-- `Validate` rejects a timeout outside 3–60 seconds, and `ValidateBatch` rejects a timeout outside 10–120 seconds, before a request is sent.
 
 ### Security
 
 - Query parameters are percent-encoded, and redirects are disabled, so a value cannot rewrite the request URL or send the client to another host.
 - Error callbacks no longer include the raw HTML access-denied page.
 - Text taken from an exception has the API key removed before it reaches the failure callback.
-- A Warmup API key with surrounding whitespace or control characters is rejected, because the transport would otherwise quote it unredacted in its own error, and a Warmup base URL must be `https://`.
-- The Warmup SMTP test masks the username and password out of every error it raises.
 
 ## [2.1.5] - 2026-06-18
 
@@ -110,7 +102,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SendFile` and `ScoringSendFile` overloads that accept a `Stream` and a file name.
 
-[Unreleased]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.1.6...HEAD
+[Unreleased]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.1.6...v3.0.0
 [2.1.5]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.1.4...v2.1.5
 [2.1.4]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.1.0...v2.1.4
 [2.1.0]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.0.12...v2.1.0

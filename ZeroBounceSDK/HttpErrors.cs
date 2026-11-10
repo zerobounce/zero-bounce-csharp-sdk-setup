@@ -63,6 +63,73 @@ namespace ZeroBounceSDK
             }
         }
 
+        /// <summary>
+        /// Whether an HTTP 200 body is nothing but an error: a JSON object with a
+        /// non-empty "error", "error_message" or "Error" string and no "success"
+        /// field to gate on. LIVE: an invalid or drained key answers validate,
+        /// activity and getapiusage with {"error": "..."}, and the filters with
+        /// {"Error": "..."}. "message" and "detail"
+        /// stay out of the list because successful responses use them too: a
+        /// bulk submit answers {"success": true, "message": "File Accepted"}.
+        /// </summary>
+        public static bool ErrorOnlyBody(string body)
+        {
+            var trimmed = (body ?? "").Trim();
+            if (!trimmed.StartsWith("{")) return false;
+            try
+            {
+                var parsed = JObject.Parse(trimmed);
+                if (parsed.ContainsKey("success")) return false;
+                foreach (var key in new[] { "error", "error_message", "Error" })
+                {
+                    if (parsed.TryGetValue(key, out var value) && value.Type == JTokenType.String &&
+                        !string.IsNullOrWhiteSpace(value.Value<string>()))
+                        return true;
+                }
+                return false;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
+        private static readonly string[] MessageOnlyKeys = { "error", "error_message", "Error", "message", "Message", "detail" };
+
+        /// <summary>
+        /// Whether a JSON body carries nothing but a message: an object with no
+        /// "success" field whose keys are all error or message keys, at least one
+        /// of them a non-empty string. Only for the email finder and domain
+        /// search, whose result is never a bare message. LIVE: guessformat
+        /// answers an invalid or drained key with an HTTP 200 and
+        /// {"Message": "Invalid API key or your account ran out of credits"}.
+        /// Not for Validate: a repeated greylist_processing request answers
+        /// {"Message": "Greylist validation still in progress..."}, a result.
+        /// </summary>
+        public static bool MessageOnlyBody(string body)
+        {
+            var trimmed = (body ?? "").Trim();
+            if (!trimmed.StartsWith("{")) return false;
+            try
+            {
+                var parsed = JObject.Parse(trimmed);
+                if (parsed.Count == 0 || parsed.ContainsKey("success")) return false;
+                var hasText = false;
+                foreach (var property in parsed.Properties())
+                {
+                    if (Array.IndexOf(MessageOnlyKeys, property.Name) < 0) return false;
+                    if (property.Value.Type == JTokenType.String &&
+                        !string.IsNullOrWhiteSpace(property.Value.Value<string>()))
+                        hasText = true;
+                }
+                return hasText;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
         public static string MessageFromBody(string body, int statusCode)
         {
             var trimmed = (body ?? "").Trim();
@@ -98,7 +165,7 @@ namespace ZeroBounceSDK
                         // The Inbox Placement Tester is a Django REST framework app:
                         // it reports errors under "detail" rather than the
                         // "error"/"message" keys the rest of the API uses.
-                        var fromField = FirstString(obj, "error", "error_message", "message", "detail");
+                        var fromField = FirstString(obj, "error", "error_message", "Error", "message", "Message", "detail");
                         if (!string.IsNullOrEmpty(fromField))
                             return StripErrorPrefix(fromField);
                     }

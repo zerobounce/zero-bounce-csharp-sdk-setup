@@ -12,14 +12,23 @@ More information about ZeroBounce can be found in the [official documentation](h
 ## INSTALLATION
 You can install by searching for `ZeroBounce.SDK` in the NuGet Package Manager, or run:
 ```bash
+dotnet add package ZeroBounce.SDK
+```
+
+From the Visual Studio Package Manager Console:
+```powershell
 Install-Package ZeroBounce.SDK
 ```
 
 ## USAGE
-Import the SDK:
+Import the SDK, and the namespaces the examples below use:
 ```c#
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;    // Debug.WriteLine in the examples below
+using Newtonsoft.Json.Linq;  // JObject / JToken results of the newer endpoints
 using ZeroBounceSDK;
-``` 
+```
 
 Initialize the wrapper with your API key and preferred API base URL:
 ```c# 
@@ -199,7 +208,7 @@ ZeroBounce.Instance.FindDomainByCompanyName(companyName,
 * ##### The `SendFile` endpoint allows you to submit a file for bulk email validation
 ```c#
 var filePath = "<FILE_PATH>"; // The csv or txt file
-var options = new SendFileOptions();
+var options = new ZeroBounce.SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
 options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
@@ -207,8 +216,8 @@ options.FirstNameColumn = 4;            // The index of "first name" column in t
 options.LastNameColumn = 5;             // The index of "last name" column in the file
 options.GenderColumn = 6;               // The index of "gender" column in the file
 options.IpAddressColumn = 7;            // The index of "IP address" column in the file
-options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers
-options.RemoveDuplicate = false;        // If you want the system to remove duplicate emails (true or false, default is true). Please note that if we remove more than 50% of the lines because of duplicates (parameter is true), system will return a 400 bad request error as a safety net to let you know that more than 50% of the file has been modified.
+options.HasHeaderRow = true;            // If this is `true` the first row is considered as table headers. Left unset, it is not sent.
+options.RemoveDuplicate = false;        // If you want the system to remove duplicate emails (true or false, default is true). Left unset, it is not sent and the API removes duplicates. Please note that if we remove more than 50% of the lines because of duplicates (parameter is true), system will return a 400 bad request error as a safety net to let you know that more than 50% of the file has been modified.
 // Optional: request catch-all (phase 2) after phase 1 when Verify+ rules apply — see [v2 send file](https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-send-file)
 options.AllowPhase2 = true;
 
@@ -250,6 +259,9 @@ ZeroBounce.Instance.GetFile(fileId, localDownloadPath,
 Optional query parameters (validation `getfile` only for `ActivityData`; scoring `ScoringGetFile` ignores `ActivityData`):
 
 ```c#
+var fileId = "<FILE_ID>";
+var localDownloadPath = "<FILE_DOWNLOAD_PATH>";
+
 ZeroBounce.Instance.GetFile(
     fileId,
     localDownloadPath,
@@ -311,7 +323,7 @@ ZeroBounce.Instance.DeleteFile(fileId,
 ```c#
 var filePath = "<FILE_PATH>"; // The csv or txt file
 
-var options = new SendFileOptions();
+var options = new ZeroBounce.SendFileOptions();
 
 options.ReturnUrl = "https://domain.com/called/after/processing/request";
 options.EmailAddressColumn=3;           // The index of "email" column in the file. Index starts at 1
@@ -412,7 +424,37 @@ without `GreylistProcessing = true` — before any request is sent. While that
 retry is still running the API answers with a `Message` instead of a result,
 which lands on `response.Message`.
 
+`ValidateBatch` takes the same `ZBValidateOptions`, but sends only `Timeout`
+(10-120 seconds there), `ActivityData` and `VerifyPlus`. It ignores `UsePost`,
+`DomainInfo`, `GreylistProcessing` and `CallbackUrl` without checking them.
+
+## Errors and `LastApiError`
+
+Failures arrive at the failure callback as a short message. `LastApiError`
+describes the most recent call on the client: `null` after a success, otherwise
+that message together with the HTTP status, so a Cloudflare 403 can be told
+apart from an API 400 or 404. The status is `0` when the failure never reached
+the API: a rejected argument, a missing file, or a transport error.
+
+```csharp
+ZeroBounce.Instance.GetCredits(
+    response => Console.WriteLine(response.Credits),
+    message =>
+    {
+        var detail = ZeroBounce.Instance.LastApiError;
+        Console.WriteLine(detail.StatusCode + ": " + detail.Message);
+    });
+```
+
 ## Bulk email finder and domain search
+
+The examples from here on pass `ok` and `error` for the two callbacks. Any
+lambda or method of the right type will do; for example:
+
+```csharp
+void ok<T>(T response) => Console.WriteLine(response);
+void error(string message) => Console.WriteLine(message);
+```
 
 Upload a file of domains and get the addresses back. The email finder needs a
 name to work from, so either `FirstNameColumn` or `FullNameColumn` is required
@@ -581,7 +623,7 @@ warmup.CreateCustomEngagement("sender@example.com", 20, 20, 35, ok, error);  // 
 warmup.CheckDomainDmarc("sender@example.com", null, ok, error);
 ```
 
-Every documented empty success (204, or an empty 200) arrives as a `null` payload, and a payload that is not a JSON object — `/seeds` is an array, `/seed-count` a bare number — arrives as that `JToken`. `warmup.LastApiError` carries the HTTP status of the most recent failure, alongside the short message the failure callback was given. Nothing is stored by `TestSmtpConfiguration`, and the credentials you pass it are masked out of any error it raises.
+Every documented empty success (204, or an empty 200) arrives as a `null` payload, and a payload that is not a JSON object — `/seeds` is an array, `/seed-count` a bare number — arrives as that `JToken`. `warmup.LastApiError` describes the most recent call the same way as on `ZeroBounce`: `null` after a success, otherwise the short message the failure callback was given plus the HTTP status. Nothing is stored by `TestSmtpConfiguration`, and the credentials you pass it are masked out of any error it raises.
 
 ## Live API suite
 
