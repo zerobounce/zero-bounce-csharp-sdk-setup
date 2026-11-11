@@ -199,6 +199,8 @@ namespace ZeroBounceSDK
                    ", subStatusBlocked=" + SubStatusBlocked +
                    ", subStatusGold=" + SubStatusGold +
                    ", subStatusRoleBasedAcceptAll=" + SubStatusRoleBasedAcceptAll +
+                   ", subStatusLeadingPeriodRemoved=" + SubStatusLeadingPeriodRemoved +
+                   ", subStatusAliasAddress=" + SubStatusAliasAddress +
                    ", startDate='" + StartDate + '\'' +
                    ", endDate='" + EndDate + '\'' +
                    '}';

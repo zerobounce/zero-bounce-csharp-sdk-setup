@@ -10,5 +10,14 @@ namespace ZeroBounceSDK
 
         [JsonProperty("last_modified")]
         public string LastModified { get; set; }
+
+        public override string ToString()
+        {
+            return "ZBS3ListFileEntry{" +
+                   "name='" + Name + '\'' +
+                   ", size=" + Size +
+                   ", lastModified='" + LastModified + '\'' +
+                   '}';
+        }
     }
 }

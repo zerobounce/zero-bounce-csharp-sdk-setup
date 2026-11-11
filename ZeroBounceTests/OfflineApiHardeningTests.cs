@@ -274,6 +274,39 @@ public partial class OfflineApiTests
     }
 
     [Test]
+    public void ADownloadWithoutASuccessCallbackIsWrittenAndReturnsNormally()
+    {
+        var downloads = new (string Name, Action<ZeroBounce, string, Action<string>> Call)[]
+        {
+            ("GetFile", (c, path, fail) => c.GetFile("fid", path, null!, fail)),
+            ("GetFile options", (c, path, fail) => c.GetFile("fid", path, new ZeroBounce.GetFileOptions(), null!, fail)),
+            ("ScoringGetFile", (c, path, fail) => c.ScoringGetFile("fid", path, null!, fail)),
+            ("EmailFinderGetFile", (c, path, fail) => c.EmailFinderGetFile("fid", path, null!, fail)),
+            ("DomainSearchGetFile", (c, path, fail) => c.DomainSearchGetFile("fid", path, null!, fail)),
+        };
+        foreach (var (name, call) in downloads)
+        {
+            var client = new HandlerClient(new FixedHandler(200, "text/csv", "email,status\na@example.com,valid\n"), "file-key");
+            var path = TempPath("no-callback.csv");
+            try
+            {
+                string? error = null;
+                Assert.DoesNotThrow(() => call(client, path, e => error = e), name);
+                Assert.That(error, Is.Null, name);
+                Assert.That(File.ReadAllText(path), Does.StartWith("email,status"), name);
+                Assert.That(client.LastApiError, Is.Null, name);
+            }
+            finally
+            {
+                File.Delete(path);
+            }
+        }
+
+        var credits = new HandlerClient(new FixedHandler(200, "application/json", "{\"Credits\":\"5\"}"), "file-key");
+        Assert.DoesNotThrow(() => credits.GetCredits(null!, _ => Assert.Fail("failed")));
+    }
+
+    [Test]
     public void ACsvDownloadIsStillWrittenWhateverItsContentType()
     {
         foreach (var contentType in new[] { "application/octet-stream", "text/csv", "text/plain", "" })
@@ -314,6 +347,29 @@ public partial class OfflineApiTests
             Assert.That(error, Does.Contain("not initialized"), shown);
             Assert.That(api.Count, Is.EqualTo(0), shown);
         }
+    }
+
+    [Test]
+    public void InitializeThatThrowsStoresNeitherTheKeyNorTheBaseUrl()
+    {
+        // A caller that catches the exception and carries on must not then
+        // send the new key over plain http.
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, null!);
+        Assert.Throws<ZBClientException>(() => client.Initialize("http-key", "http://api.example.com/v2"));
+        var (_, error) = Capture<ZBCreditsResponse>((ok, fail) => client.GetCredits(ok, fail));
+        Assert.That(api.Take().Select(r => r.EscapedUri), Is.Empty, "a request was sent after Initialize threw");
+        Assert.That(error, Does.Contain("not initialized"));
+
+        // An earlier, valid setup stays in place.
+        client.Initialize("good-key", "https://api.example.com/v2");
+        Assert.Throws<ZBClientException>(() => client.Initialize("http-key", "http://evil.example/v2"));
+        Assert.Throws<ZBClientException>(() => client.Initialize("bad key ", "https://other.example/v2"));
+        Capture<ZBCreditsResponse>((ok, fail) => client.GetCredits(ok, fail));
+        var request = Only(api);
+        Assert.That(request.EscapedUri, Does.StartWith("https://api.example.com/v2/getcredits"));
+        Assert.That(request.EscapedUri, Does.Contain("api_key=good-key"));
+        Assert.That(request.EscapedUri, Does.Not.Contain("http-key"));
     }
 
     // -- HTTPS on every request path ---------------------------------------------
@@ -515,6 +571,82 @@ public partial class OfflineApiTests
         var apiError = new ZBApiError("boom", 400).ToString();
         Assert.That(apiError, Is.EqualTo("ZBApiError{statusCode=400, message='boom'}"));
         Assert.That(new ZBApiError("bad argument", 0).ToString(), Is.EqualTo("ZBApiError{statusCode=0, message='bad argument'}"));
+    }
+
+    /// <summary>
+    /// The response models: every public class of the SDK with a JSON-mapped
+    /// member, apart from the request types.
+    /// </summary>
+    private static List<Type> ResponseModels() => typeof(ZeroBounce).Assembly.GetExportedTypes()
+        .Where(t => t.IsClass && !t.IsAbstract && t.Namespace == "ZeroBounceSDK")
+        .Where(t => !typeof(ZBJsonRequest).IsAssignableFrom(t) && t != typeof(ZBValidateEmailRow))
+        .Where(t => t.GetMembers(BindingFlags.Public | BindingFlags.Instance)
+            .Any(m => m.GetCustomAttributes(typeof(Newtonsoft.Json.JsonPropertyAttribute), true).Length > 0))
+        .OrderBy(t => t.Name)
+        .ToList();
+
+    [Test]
+    public void EveryResponseModelToStringNamesTheTypeAndEveryField()
+    {
+        var models = ResponseModels();
+        Assert.That(models.Select(t => t.Name), Is.SupersetOf(new[]
+        {
+            "ZBActivityResponse", "ZBBatchError", "ZBCreditsResponse", "ZBDeleteFileResponse", "ZBDomainFormat",
+            "ZBDomainSearchResponse", "ZBEmailFinderResponse", "ZBFileStatusResponse", "ZBGetApiUsageResponse",
+            "ZBGetFileResponse", "ZBS3ListFileEntry", "ZBScoreEmailResponse", "ZBSendFileResponse",
+            "ZBValidateBatchResponse", "ZBValidateBatchResponseRow", "ZBValidateResponse",
+        }));
+        var failures = new List<string>();
+        foreach (var type in models)
+        {
+            // Unset members, such as a null message list, never throw.
+            string empty;
+            try
+            {
+                empty = Activator.CreateInstance(type)!.ToString()!;
+            }
+            catch (Exception e)
+            {
+                failures.Add(type.Name + ".ToString() threw on a new instance: " + e.GetType().Name);
+                continue;
+            }
+            if (!empty.StartsWith(type.Name + "{"))
+                failures.Add(type.Name + " names itself wrongly: " + empty);
+
+            var target = Activator.CreateInstance(type)!;
+            var number = 1000;
+            var expected = new List<(string Name, string? Value)>();
+            foreach (var member in type.GetMembers(BindingFlags.Public | BindingFlags.Instance))
+            {
+                var field = member as FieldInfo;
+                var property = member as PropertyInfo;
+                if (field == null && (property == null || property.GetIndexParameters().Length > 0)) continue;
+                var memberType = field?.FieldType ?? property!.PropertyType;
+                var writable = field != null ? !field.IsInitOnly : property!.CanWrite;
+                object? value = null;
+                if (writable && memberType == typeof(string)) value = "value-" + member.Name;
+                else if (writable && (memberType == typeof(int) || memberType == typeof(int?))) value = ++number;
+                else if (writable && memberType == typeof(List<string>)) value = new List<string> { "value-" + member.Name };
+                if (value != null)
+                {
+                    if (field != null) field.SetValue(target, value);
+                    else property!.SetValue(target, value);
+                }
+                var shown = value is List<string> list ? list[0] : value?.ToString();
+                expected.Add((char.ToLowerInvariant(member.Name[0]) + member.Name.Substring(1), shown));
+            }
+            var text = target.ToString()!;
+            if (!text.StartsWith(type.Name + "{"))
+                failures.Add(type.Name + " names itself wrongly: " + text);
+            foreach (var (name, value) in expected)
+            {
+                if (!text.Contains(name + "="))
+                    failures.Add(type.Name + " leaves out " + name + ": " + text);
+                else if (value != null && !text.Contains(value))
+                    failures.Add(type.Name + " leaves out the value of " + name + ": " + text);
+            }
+        }
+        Assert.That(failures, Is.Empty, string.Join("\n", failures));
     }
 
     private static T Filled<T>(T target)

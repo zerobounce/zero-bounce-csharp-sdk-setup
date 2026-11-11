@@ -130,13 +130,15 @@ namespace ZeroBounceSDK
         /// <exception cref="ZBClientException">
         /// Thrown when apiKey is null or whitespace, or has surrounding whitespace
         /// or control characters, or when baseUrl is not an https:// URL.
+        /// Nothing is stored when it throws: the key and base URL set before stay in place.
         /// </exception>
         public void Initialize(string apiKey, string baseUrl)
         {
             RequireUsableApiKey(apiKey);
+            var url = baseUrl == null ? ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL) : baseUrl.TrimEnd('/');
+            RequireHttpsUrl(url);
             _apiKey = apiKey;
-            _apiBaseUrl = baseUrl == null ? ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL) : baseUrl.TrimEnd('/');
-            RequireHttpsUrl(_apiBaseUrl);
+            _apiBaseUrl = url;
         }
 
         /// <param name="email">The email address you want to validate</param>
@@ -797,13 +799,17 @@ namespace ZeroBounceSDK
             });
         }
 
-        /// <summary>Clears the last error, then hands the result to the caller.</summary>
+        /// <summary>
+        /// Clears the last error, then hands the result to the caller. A null
+        /// success callback is allowed: a download is still written to disk
+        /// and the call returns normally, as in the Java and C++ SDKs.
+        /// </summary>
         private void Succeed<T>(Action<T> successCallback, T value)
         {
             Deliver(() =>
             {
                 LastApiError = null;
-                successCallback(value);
+                successCallback?.Invoke(value);
             });
         }
 

@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `Initialize(apiKey, baseUrl)` stores nothing when it throws. In 4.0.0 it stored the key and the base URL before checking that the URL was https, so a caller that caught the `ZBClientException` for `http://...` and carried on sent the key over plain HTTP on the next call (`http://<host>/v2/getcredits?api_key=<key>`). Now the key and base URL from the previous successful `Initialize`, if any, stay in place, and without one every call fails with "not initialized".
+- `GetFile`, `ScoringGetFile`, `EmailFinderGetFile` and `DomainSearchGetFile` accept a null success callback, as in the Java and C++ SDKs: the file is written and the call returns normally. In 4.0.0 they wrote the file and then threw `NullReferenceException`. The other methods also ignore a null success callback now.
+- `ZBDeleteFileResponse.ToString()` starts with `ZBDeleteFileResponse{` (4.0.0 printed `ZBSendFileResponse{`) and no longer throws `ArgumentNullException` when `Message` is null.
+- `ToString()` includes every field: `ZBValidateResponse` adds `activeInDays`, `activeFirstSeen`, `domainWebsiteExists`, `domainRegistrantCompanyName` and `message`; `ZBGetFileResponse` adds `message`, `errorMessage` and `error`; `ZBGetApiUsageResponse` adds `subStatusLeadingPeriodRemoved` and `subStatusAliasAddress`. `ZBS3ListFileEntry` has a `ToString()` (`ZBS3ListFileEntry{name='...', size=..., lastModified='...'}`); in 4.0.0 it printed the full type name, `ZeroBounceSDK.ZBS3ListFileEntry`.
+- Repository only: a test checks the `ToString()` of every response model, found by reflection, for its type name and every field.
+
 ## [4.0.0] - 2026-11-12
 
 ### Changed
