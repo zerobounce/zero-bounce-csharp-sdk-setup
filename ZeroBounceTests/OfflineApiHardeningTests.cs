@@ -50,6 +50,13 @@ public partial class OfflineApiTests
     }
 
     [Test]
+    public void SendFileResponseToStringToleratesANullMessage()
+    {
+        var response = new ZBSendFileResponse { Success = true, FileName = "f.csv", FileId = "id" };
+        Assert.That(response.ToString(), Does.Contain("ZBSendFileResponse{").And.Contain("fileId='id'"));
+    }
+
+    [Test]
     public void EveryKindOfCallReturnsOnABlockedUiThreadAndCallsBackOnIt()
     {
         var csv = WriteCsv();

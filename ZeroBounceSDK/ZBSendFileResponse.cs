@@ -19,7 +19,7 @@ namespace ZeroBounceSDK
         {
             return "ZBSendFileResponse{" +
                           "success=" + Success +
-                          ", message='" + string.Join(", ", Message)+ '\'' +
+                          ", message='" + (Message == null ? "" : string.Join(", ", Message)) + '\'' +
                           ", fileName='" + FileName + '\'' +
                           ", fileId='" + FileId + '\'' +
                           '}';
