@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [4.0.0] - 2026-11-12
 
 ### Changed
 
@@ -130,7 +130,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SendFile` and `ScoringSendFile` overloads that accept a `Stream` and a file name.
 
-[Unreleased]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.1.6...v3.0.0
 [2.1.5]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.1.4...v2.1.5
 [2.1.4]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v2.1.0...v2.1.4
