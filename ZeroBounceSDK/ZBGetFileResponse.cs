@@ -21,7 +21,13 @@ namespace ZeroBounceSDK
 
         public override string ToString()
         {
-            return "ZBGetFileResponse{localFilePath='" + LocalFilePath + "', success=" + Success + "}";
+            return "ZBGetFileResponse{" +
+                   "localFilePath='" + LocalFilePath + '\'' +
+                   ", success=" + Success +
+                   ", message='" + Message + '\'' +
+                   ", errorMessage='" + ErrorMessage + '\'' +
+                   ", error='" + Error + '\'' +
+                   '}';
         }
     }
 }

@@ -95,6 +95,10 @@ namespace ZeroBounceSDK
                    ", domain='" + Domain + '\'' +
                    ", didYouMean='" + DidYouMean + '\'' +
                    ", domainAgeDays='" + DomainAgeDays + '\'' +
+                   ", activeInDays='" + ActiveInDays + '\'' +
+                   ", activeFirstSeen='" + ActiveFirstSeen + '\'' +
+                   ", domainWebsiteExists='" + DomainWebsiteExists + '\'' +
+                   ", domainRegistrantCompanyName='" + DomainRegistrantCompanyName + '\'' +
                    ", freeEmail=" + FreeEmail +
                    ", mxFound=" + MxFound +
                    ", mxRecord='" + MxRecord + '\'' +
@@ -109,6 +113,7 @@ namespace ZeroBounceSDK
                    ", country='" + Country + '\'' +
                    ", processedAt='" + ProcessedAt + '\'' +
                    ", error='" + Error + '\'' +
+                   ", message='" + Message + '\'' +
                    '}';
         }
     }

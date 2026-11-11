@@ -47,7 +47,7 @@ You can also use a custom base URL (e.g. for testing). Trailing slashes are remo
 ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", "https://api.zerobounce.net/v2");
 ```
 
-**Note:** `Initialize` throws `ZBClientException` if the API key is null or whitespace, or has surrounding whitespace or control characters. Other client-side validations (e.g. empty `email_batch`, empty `file_id`, or using both `domain` and `company_name` together in Email Finder/Domain Search) are reported via the failure callback.
+**Note:** `Initialize` throws `ZBClientException` if the API key is null or whitespace, or has surrounding whitespace or control characters, or if a custom base URL is not `https://`. Nothing is stored when it throws. Other client-side validations (e.g. empty `email_batch`, empty `file_id`, or using both `domain` and `company_name` together in Email Finder/Domain Search) are reported via the failure callback.
 
 ### Callbacks and threads
 
