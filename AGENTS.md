@@ -36,9 +36,11 @@ ZEROBOUNCE_LIVE_CHANGES=1 dotnet run --project ZeroBounceLiveApi
 Keys come from the environment only. Never write one into a file, a commit, a
 log, a fixture or a message.
 
-CI (`.github/workflows/sdk_ci.yml`) restores and runs `dotnet test ZeroBounceTests/ZeroBounceTests.csproj`. That build is the typecheck. There is no separate lint step.
+CI (`.github/workflows/sdk_ci.yml`) restores, runs `dotnet test ZeroBounceTests/ZeroBounceTests.csproj`, builds the WPF sample (`ZeroBounceSample`, which references the SDK project; `EnableWindowsTargeting` lets it compile on Linux), and packs the SDK to check that the `.nupkg` carries the XML docs and a `.snupkg` sits next to it. That build is the typecheck. There is no separate lint step.
 
-Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It tests, packs `ZeroBounceSDK.csproj`, pushes to NuGet, and creates the GitHub release.
+Pack the way the workflows do, `dotnet build -c Release` then `dotnet pack -c Release --no-build`: with `GeneratePackageOnBuild`, a plain `dotnet pack` fails with NU5026.
+
+Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It tests, packs `ZeroBounceSDK.csproj`, pushes the `.nupkg` and its `.snupkg` symbols package (SourceLink to this repository) to NuGet, and creates the GitHub release.
 
 ## Conventions
 
@@ -57,8 +59,9 @@ Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It 
 - **Booleans on multipart and form bodies are the strings `true` and `false`.** `SendFileOptions.HasHeaderRow` and `RemoveDuplicate` are `bool?` and are sent only when set. `allow_phase_2` is validation `SendFile` only, and only when `AllowPhase2` has a value. `activity_data` on get-file is validation only. Scoring `SendFile` ignores name, gender, IP, and `allow_phase_2`.
 - **`ValidateBatch` uses `api.zerobounce.net`**, not `bulkapi.zerobounce.net`.
 - **Timeouts.** Single `Validate` accepts 3–60 seconds. `ValidateBatch` accepts 10–120 seconds. An out-of-range value is a failure callback and no request is sent.
-- **Failures use the failure callback**, not exceptions, except `Initialize` (empty API key, or a base URL that is not `https://`), which throws `ZBClientException`. The message must be short: no raw HTML, no megabyte body, no Newtonsoft parse text, and no `Error: Error:` prefix. An account-level `ValidateBatch` error (`email_address` `all`) is a failure callback. A per-address error stays on the success result.
+- **Failures use the failure callback**, not exceptions, except `Initialize` (empty API key, a key with surrounding whitespace or control characters, or a base URL that is not `https://`), which throws `ZBClientException`. The message must be short: no raw HTML, no megabyte body, no Newtonsoft parse text, and no `Error: Error:` prefix. An account-level `ValidateBatch` error (`email_address` `all`) is a failure callback. A per-address error stays on the success result.
 - **Tests replace `_client`.** It is `protected`. Subclass `ZeroBounce` in the test and assign an `HttpClient` with a fake handler. Do not call the live API from `ZeroBounceTests`; `ZeroBounceLiveApi` is the separate, opt-in suite.
+- **Public methods are synchronous over async I/O, and must stay safe on a UI thread.** Every public method waits for its request through `RunSync`, never `.Wait()` or `.Result`: it starts the request with no `SynchronizationContext`, and holds the callbacks back until the request has finished so they run on the caller's thread, outside the SDK's `try` blocks. Every `await` in `ZeroBounceSDK` takes `.ConfigureAwait(false)`; `ZeroBounceSDK/.editorconfig` makes a missing one a build error (CA2007). An exception from a caller's callback propagates; it never reaches the failure callback or `LastApiError`. So keep callbacks out of `try` blocks that report through `Fail` (the file-path upload overloads open the file with `TryOpenUpload` for that reason).
 - **Errors carry the HTTP status.** The failure callback still takes a `string`, and `LastApiError` on both clients carries the same message with the status, so callers can tell a Cloudflare 403 from an API 400/404 and a Warmup 429. It describes the most recent call: every failure path sets it through `Fail` (status `0` when the API was never reached), and every success clears it through `Succeed`, synchronously, just before the callback runs. Never call a callback directly.
 - **`ValidateBatch` sends only `Timeout`, `ActivityData` and `VerifyPlus`** from `ZBValidateOptions`; the other options are for `Validate`.
 

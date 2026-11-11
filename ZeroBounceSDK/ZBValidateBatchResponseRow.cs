@@ -12,7 +12,7 @@ namespace ZeroBounceSDK
         [JsonProperty("sub_status")] [JsonConverter(typeof(ZBValidateSubStatusConverter))]
         public ZBValidateSubStatus SubStatus { get; set; }
 
-        [JsonProperty("free_email")] public bool FreeEmail { get; set; }
+        [JsonProperty("free_email")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool FreeEmail { get; set; }
 
         [JsonProperty("did_you_mean")] public string DidYouMean { get; set; }
 
@@ -24,7 +24,7 @@ namespace ZeroBounceSDK
 
         [JsonProperty("smtp_provider")] public string SmtpProvider { get; set; }
 
-        [JsonProperty("catchall_domain")] public bool? CatchallDomain { get; set; }
+        [JsonProperty("catchall_domain")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool? CatchallDomain { get; set; }
 
         [JsonProperty("mx_found")] public string MxFound { get; set; }
 
@@ -45,5 +45,31 @@ namespace ZeroBounceSDK
         [JsonProperty("zipcode")] public string ZipCode { get; set; }
 
         [JsonProperty("processed_at")] public string ProcessedAt { get; set; }
+
+        public override string ToString()
+        {
+            return "ZBValidateBatchResponseRow{" +
+                   "address='" + Address + '\'' +
+                   ", status=" + Status +
+                   ", subStatus=" + SubStatus +
+                   ", freeEmail=" + FreeEmail +
+                   ", didYouMean='" + DidYouMean + '\'' +
+                   ", account='" + Account + '\'' +
+                   ", domain='" + Domain + '\'' +
+                   ", domainAgeDays='" + DomainAgeDays + '\'' +
+                   ", smtpProvider='" + SmtpProvider + '\'' +
+                   ", catchallDomain=" + CatchallDomain +
+                   ", mxFound='" + MxFound + '\'' +
+                   ", mxRecord='" + MxRecord + '\'' +
+                   ", firstName='" + FirstName + '\'' +
+                   ", lastName='" + LastName + '\'' +
+                   ", gender='" + Gender + '\'' +
+                   ", country='" + Country + '\'' +
+                   ", region='" + Region + '\'' +
+                   ", city='" + City + '\'' +
+                   ", zipCode='" + ZipCode + '\'' +
+                   ", processedAt='" + ProcessedAt + '\'' +
+                   '}';
+        }
     }
 }

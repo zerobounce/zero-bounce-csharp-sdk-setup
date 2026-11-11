@@ -1,0 +1,5 @@
+# The SDK blocks on its own async I/O (the public methods are synchronous), so
+# an await that resumes on the caller's SynchronizationContext deadlocks a UI
+# thread. Every await in the library must use ConfigureAwait(false).
+[*.cs]
+dotnet_diagnostic.CA2007.severity = error

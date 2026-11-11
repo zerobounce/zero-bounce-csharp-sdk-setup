@@ -14,7 +14,7 @@ namespace ZeroBounceTests;
 /// from the API key prefix, with no network.
 /// </summary>
 [TestFixture]
-public class OfflineApiTests
+public partial class OfflineApiTests
 {
     private static readonly string AccessDeniedPage = BuildAccessDeniedPage();
 

@@ -6,7 +6,12 @@ using ZeroBounceSDK;
 namespace ZeroBounceSample
 {
     /// <summary>
-    /// Interaction logic for MainWindow.xaml
+    /// Interaction logic for MainWindow.xaml.
+    /// <para>
+    /// The SDK's methods are synchronous: each click handler blocks the UI
+    /// thread until the response arrives, then the callback runs on the UI
+    /// thread, so it may update controls directly.
+    /// </para>
     /// </summary>
     public partial class MainWindow
     {
@@ -34,10 +39,10 @@ namespace ZeroBounceSample
 
         private void SendFileButton_OnClick(object sender, RoutedEventArgs e)
         {
-            ZeroBounce.Instance.SendFile("./email_file.csv", 1,
+            ZeroBounce.Instance.SendFile("./email_file.csv",
                 new ZeroBounce.SendFileOptions
                 {
-                    FirstNameColumn = 2, LastNameColumn = 3, HasHeaderRow = true
+                    EmailAddressColumn = 1, FirstNameColumn = 2, LastNameColumn = 3, HasHeaderRow = true
                 },
                 response => Debug.WriteLine("SendFile success response " + response),
                 error => Debug.WriteLine("SendFile failure error " + error));
@@ -76,26 +81,6 @@ namespace ZeroBounceSample
                 response => Debug.WriteLine("DeleteFile success response " + response), 
                 error => Debug.WriteLine("DeleteFile failure error " + error));
         }
-
-        private void OnButtonClick(object? sender, RoutedEventArgs e)
-        {
-            Console.WriteLine("Button clicked!");
-            var dialog = new Window
-            {
-                Width = 300,
-                Height = 100,
-                Title = "Hello",
-                Content = new TextBlock
-                {
-                    Text = "Hello from Avalonia!",
-                    HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Center,
-                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center
-                }
-            };
-
-            dialog.ShowDialog(this);
-        }
-
     }
     
 }

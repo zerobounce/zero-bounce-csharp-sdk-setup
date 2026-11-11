@@ -4,7 +4,7 @@ namespace ZeroBounceSDK
 {
     public class ZBFileStatusResponse : ZBResponse
     {
-        [JsonProperty("success")] public bool Success;
+        [JsonProperty("success")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool Success;
         [JsonProperty("message")] public string Message;
         [JsonProperty("file_status")] public string FileStatus;
         [JsonProperty("file_phase_2_status")] public string FilePhase2Status;

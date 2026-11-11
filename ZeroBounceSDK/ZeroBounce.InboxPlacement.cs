@@ -201,7 +201,7 @@ namespace ZeroBounceSDK
             var query = extraQuery ?? "";
             if (query.StartsWith("&")) query = "?" + query.Substring(1);
             var url = _inboxPlacementBaseUrl + path + query;
-            _SendInboxPlacementRequest(method, url, body, successCallback, failureCallback).Wait();
+            RunSync(() => _SendInboxPlacementRequest(method, url, body, successCallback, failureCallback));
         }
 
         private async Task _SendInboxPlacementRequest(HttpMethod method, string url, JObject body,
@@ -215,12 +215,12 @@ namespace ZeroBounceSDK
                 if (body != null)
                     request.Content = new StringContent(body.ToString(Formatting.None), Encoding.UTF8, "application/json");
 
-                var result = await _client.SendAsync(request);
+                var result = await _client.SendAsync(request).ConfigureAwait(false);
                 // LIVE: DELETE /test/{id} answers HTTP 204 with an empty body.
                 // That is the success, so it must not be read as the empty
                 // response ReadUsableBody normally rejects.
                 await DeliverJson(result, successCallback, failureCallback,
-                    allowEmptyBody: method == HttpMethod.Delete);
+                    allowEmptyBody: method == HttpMethod.Delete).ConfigureAwait(false);
             }
             catch (Exception e)
             {

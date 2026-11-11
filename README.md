@@ -20,6 +20,13 @@ From the Visual Studio Package Manager Console:
 Install-Package ZeroBounce.SDK
 ```
 
+## Requirements
+
+The package targets .NET Standard 2.0, so it runs on .NET Framework 4.6.1 or later
+(4.7.2 or later recommended), .NET Core 2.0 or later, and .NET 5 or later. Its only
+dependency is `Newtonsoft.Json` 13.0.4. The package includes XML documentation for
+IntelliSense.
+
 ## USAGE
 Import the SDK, and the namespaces the examples below use:
 ```c#
@@ -40,15 +47,25 @@ You can also use a custom base URL (e.g. for testing). Trailing slashes are remo
 ZeroBounce.Instance.Initialize("<YOUR_API_KEY>", "https://api.zerobounce.net/v2");
 ```
 
-**Note:** `Initialize` throws `ZBClientException` if the API key is null or whitespace. Other client-side validations (e.g. empty `email_batch`, empty `file_id`, or using both `domain` and `company_name` together in Email Finder/Domain Search) are reported via the failure callback.
+**Note:** `Initialize` throws `ZBClientException` if the API key is null or whitespace, or has surrounding whitespace or control characters. Other client-side validations (e.g. empty `email_batch`, empty `file_id`, or using both `domain` and `company_name` together in Email Finder/Domain Search) are reported via the failure callback.
+
+### Callbacks and threads
+
+Every method is synchronous: it returns after the request has finished and one of
+its two callbacks has run, on the thread that called it. Calling it from a UI
+thread (WPF, WinForms, MAUI) is safe, but blocks that thread for the length of the
+request; wrap the call in `Task.Run` to keep the UI responsive. An exception thrown
+by your own callback propagates to the caller unchanged; it is never passed to the
+failure callback or recorded in `LastApiError`.
 
 ### Response types and enums
 - **ZBConfidence** – Used in Email Finder and Domain Search for confidence levels: `High`, `Medium`, `Low`, `Unknown`, `Undetermined`. Exposed on `ZBEmailFinderResponse.EmailConfidence`, `ZBDomainSearchResponse.Confidence`, and `ZBDomainFormat.Confidence`.
+- Booleans in responses are read strictly: `true`/`false`, `"true"`/`"false"`, `1`/`0` and `"1"`/`"0"`. Any other value is a failure ("ZeroBounce returned an invalid boolean for free_email").
 - **ZBValidateStatus** / **ZBValidateSubStatus** – Validation result status and sub-status. Used on `ZBValidateResponse` and on each `ZBValidateBatchResponseRow` in batch validate responses. See the API docs for allowed values.
 - **ZBGetApiUsageResponse** – Includes per-status and per–sub-status counts (e.g. `SubStatusMxForward`, `SubStatusAlternate`, `SubStatusAllowed`, `SubStatusBlocked`, `SubStatusGold`).
 - **ZBFileStatusResponse** – Includes `ErrorReason` for file processing errors when present, and `FilePhase2Status` (`file_phase_2_status`) when the bulk API returns it (e.g. after optional phase 2 processing).
 - **ZBDownloadType** – `Phase1`, `Phase2`, or `Combined` for bulk `getfile` `download_type` (validation and scoring).
-- **ZBGetFileResponse** – When the API returns JSON (e.g. file not ready or an error with HTTP 200), the SDK treats `Success`, `Message`, `ErrorMessage`, and `Error` as error signals and invokes the failure callback with the first non-empty message.
+- **ZBGetFileResponse** – Returned only when the file was saved; `LocalFilePath` is its full path. A JSON body in place of the file (e.g. file not ready, or an error with HTTP 200), whatever its content type, is an error: nothing is written, and the failure callback gets the API's message.
 
 ## Examples
 You can now use any of the SDK methods, for example:

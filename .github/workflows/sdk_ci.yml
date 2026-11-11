@@ -29,3 +29,17 @@ jobs:
 
       - name: Run tests
         run: dotnet test ZeroBounceTests/ZeroBounceTests.csproj --no-restore -v normal
+
+      # The WPF sample targets Windows; EnableWindowsTargeting lets it compile here.
+      - name: Build the sample
+        run: dotnet build ZeroBounceSample/ZeroBounceSample.csproj --no-restore
+
+      - name: Check the package
+        run: |
+          dotnet build ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-restore
+          dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
+          NUPKG=ZeroBounceSDK/bin/Release/ZeroBounce.SDK.$(sed -n 's:.*<PackageVersion>\(.*\)</PackageVersion>.*:\1:p' ZeroBounceSDK/ZeroBounceSDK.csproj).nupkg
+          unzip -l "$NUPKG"
+          unzip -l "$NUPKG" | grep -q 'lib/netstandard2.0/ZeroBounceSDK.xml' || { echo "No XML docs in $NUPKG"; exit 1; }
+          if unzip -l "$NUPKG" | grep -qiE 'Tests|\.env'; then echo "Unexpected file in $NUPKG"; exit 1; fi
+          test -f "${NUPKG%.nupkg}.snupkg" || { echo "No symbols package next to $NUPKG"; exit 1; }

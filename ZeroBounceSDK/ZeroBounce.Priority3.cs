@@ -91,17 +91,10 @@ namespace ZeroBounceSDK
         public void SendEmailFinderFile(string filePath, int domainColumn, EmailFinderSendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            try
+            if (!TryOpenUpload(filePath, failureCallback, out var file, out var fileName)) return;
+            using (file)
             {
-                var fileName = Path.GetFileName(filePath);
-                using (var file = File.OpenRead(filePath))
-                {
-                    SendEmailFinderFile(file, fileName, domainColumn, options, successCallback, failureCallback);
-                }
-            }
-            catch (Exception e)
-            {
-                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
+                SendEmailFinderFile(file, fileName, domainColumn, options, successCallback, failureCallback);
             }
         }
 
@@ -128,8 +121,7 @@ namespace ZeroBounceSDK
                 return;
             }
             var fields = BuildEmailFinderFields(domainColumn, options);
-            _SendBulkRootMultipart(EmailFinderBulkBaseUrl + "/sendfile", file, fileName, fields, successCallback, failureCallback)
-                .Wait();
+            RunSync(() => _SendBulkRootMultipart(EmailFinderBulkBaseUrl + "/sendfile", file, fileName, fields, successCallback, failureCallback));
         }
 
         public void EmailFinderFileStatus(string fileId,
@@ -141,7 +133,7 @@ namespace ZeroBounceSDK
         public void EmailFinderGetFile(string fileId, string localDownloadPath,
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootGetFile(EmailFinderBulkBaseUrl, fileId, localDownloadPath, successCallback, failureCallback).Wait();
+            RunSync(() => _BulkRootGetFile(EmailFinderBulkBaseUrl, fileId, localDownloadPath, successCallback, failureCallback));
         }
 
         public void EmailFinderDeleteFile(string fileId,
@@ -153,17 +145,10 @@ namespace ZeroBounceSDK
         public void SendDomainSearchFile(string filePath, int domainColumn, DomainSearchSendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            try
+            if (!TryOpenUpload(filePath, failureCallback, out var file, out var fileName)) return;
+            using (file)
             {
-                var fileName = Path.GetFileName(filePath);
-                using (var file = File.OpenRead(filePath))
-                {
-                    SendDomainSearchFile(file, fileName, domainColumn, options, successCallback, failureCallback);
-                }
-            }
-            catch (Exception e)
-            {
-                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
+                SendDomainSearchFile(file, fileName, domainColumn, options, successCallback, failureCallback);
             }
         }
 
@@ -176,8 +161,7 @@ namespace ZeroBounceSDK
                 return;
             }
             var fields = BuildDomainSearchFields(domainColumn, options);
-            _SendBulkRootMultipart(DomainSearchBulkBaseUrl + "/sendfile", file, fileName, fields, successCallback, failureCallback)
-                .Wait();
+            RunSync(() => _SendBulkRootMultipart(DomainSearchBulkBaseUrl + "/sendfile", file, fileName, fields, successCallback, failureCallback));
         }
 
         public void DomainSearchFileStatus(string fileId,
@@ -189,7 +173,7 @@ namespace ZeroBounceSDK
         public void DomainSearchGetFile(string fileId, string localDownloadPath,
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _BulkRootGetFile(DomainSearchBulkBaseUrl, fileId, localDownloadPath, successCallback, failureCallback).Wait();
+            RunSync(() => _BulkRootGetFile(DomainSearchBulkBaseUrl, fileId, localDownloadPath, successCallback, failureCallback));
         }
 
         public void DomainSearchDeleteFile(string fileId,
@@ -201,17 +185,10 @@ namespace ZeroBounceSDK
         public void SendListEvaluatorFile(string filePath, int emailAddressColumn,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            try
+            if (!TryOpenUpload(filePath, failureCallback, out var file, out var fileName)) return;
+            using (file)
             {
-                var fileName = Path.GetFileName(filePath);
-                using (var file = File.OpenRead(filePath))
-                {
-                    SendListEvaluatorFile(file, fileName, emailAddressColumn, successCallback, failureCallback);
-                }
-            }
-            catch (Exception e)
-            {
-                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
+                SendListEvaluatorFile(file, fileName, emailAddressColumn, successCallback, failureCallback);
             }
         }
 
@@ -227,8 +204,7 @@ namespace ZeroBounceSDK
             {
                 { "email_address_column", emailAddressColumn.ToString() }
             };
-            _SendBulkRootMultipart(_listEvaluatorBaseUrl + "/", file, fileName, fields, successCallback, failureCallback)
-                .Wait();
+            RunSync(() => _SendBulkRootMultipart(_listEvaluatorBaseUrl + "/", file, fileName, fields, successCallback, failureCallback));
         }
 
         public void GetListEvaluatorResult(string fileId, Action<JObject> successCallback, Action<string> failureCallback)
@@ -240,10 +216,10 @@ namespace ZeroBounceSDK
                 return;
             }
             // The file id is one path segment, so a slash in it must stay encoded.
-            _sendJsonCallback(
+            RunSync(() => _sendJsonCallback(
                 _listEvaluatorBaseUrl + "/" + Enc(fileId.Trim()) + "/?api_key=" + Enc(_apiKey),
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         /// <summary>
@@ -265,9 +241,9 @@ namespace ZeroBounceSDK
                 Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
-            _PostBulkRootForm("/v2/send-evaluated-file/",
+            RunSync(() => _PostBulkRootForm("/v2/send-evaluated-file/",
                 new Dictionary<string, string> { { "file_id", fileId.Trim() } },
-                successCallback, failureCallback).Wait();
+                successCallback, failureCallback));
         }
 
         public void AddFilter(string rule, string target, string value,
@@ -286,7 +262,7 @@ namespace ZeroBounceSDK
                 { "target", target },
                 { "value", value }
             };
-            _sendFormJsonCallback(_apiBaseUrl + "/filters/add", form, successCallback, failureCallback).Wait();
+            RunSync(() => _sendFormJsonCallback(_apiBaseUrl + "/filters/add", form, successCallback, failureCallback));
         }
 
         public void ListFilters(bool usePost, Action<JToken> successCallback, Action<string> failureCallback)
@@ -295,14 +271,14 @@ namespace ZeroBounceSDK
             if (usePost)
             {
                 var form = new Dictionary<string, string> { { "api_key", _apiKey } };
-                _sendFormJsonTokenCallback(_apiBaseUrl + "/filters/list", form, successCallback, failureCallback).Wait();
+                RunSync(() => _sendFormJsonTokenCallback(_apiBaseUrl + "/filters/list", form, successCallback, failureCallback));
             }
             else
             {
-                _sendJsonTokenCallback(
+                RunSync(() => _sendJsonTokenCallback(
                     _apiBaseUrl + "/filters/list?api_key=" + Enc(_apiKey),
                     successCallback,
-                    failureCallback).Wait();
+                    failureCallback));
             }
         }
 
@@ -322,7 +298,7 @@ namespace ZeroBounceSDK
                 { "target", target },
                 { "value", value }
             };
-            _sendFormJsonCallback(_apiBaseUrl + "/filters/delete", form, successCallback, failureCallback).Wait();
+            RunSync(() => _sendFormJsonCallback(_apiBaseUrl + "/filters/delete", form, successCallback, failureCallback));
         }
 
         public void ListS3Files(string bucket, string search,
@@ -334,7 +310,7 @@ namespace ZeroBounceSDK
                 query += "&bucket=" + Enc(bucket);
             if (!string.IsNullOrWhiteSpace(search))
                 query += "&search=" + Enc(search);
-            _sendListRequest<ZBS3ListFileEntry>(query, successCallback, failureCallback).Wait();
+            RunSync(() => _sendListRequest<ZBS3ListFileEntry>(query, successCallback, failureCallback));
         }
 
         /// <summary>
@@ -397,7 +373,7 @@ namespace ZeroBounceSDK
             var fields = new Dictionary<string, string> { { "file_id", fileId } };
             if (exportBucket != null)
                 fields["export_bucket"] = exportBucket;
-            _PostBulkRootForm("/exportS3file", fields, successCallback, failureCallback).Wait();
+            RunSync(() => _PostBulkRootForm("/exportS3file", fields, successCallback, failureCallback));
         }
 
         /// <summary>
@@ -495,7 +471,7 @@ namespace ZeroBounceSDK
             var fields = new Dictionary<string, string> { { "file_id", fileId } };
             if (exportPath != null)
                 fields["export_path"] = exportPath;
-            _PostBulkRootForm("/exportSFTPfile", fields, successCallback, failureCallback).Wait();
+            RunSync(() => _PostBulkRootForm("/exportSFTPfile", fields, successCallback, failureCallback));
         }
 
         /// <summary>
@@ -554,7 +530,7 @@ namespace ZeroBounceSDK
                     fields[entry.Key] = entry.Value;
             }
 
-            _PostBulkRootForm(path, fields, successCallback, failureCallback).Wait();
+            RunSync(() => _PostBulkRootForm(path, fields, successCallback, failureCallback));
         }
 
         private static Dictionary<string, string> BuildEmailFinderFields(int domainColumn, EmailFinderSendFileOptions options)
@@ -585,7 +561,7 @@ namespace ZeroBounceSDK
         /// <summary>
         /// The fields validateS3file takes on top of the ones every S3 / SFTP
         /// job shares. file_name, return_url, has_header_row and
-        /// remove_duplicates are added by <see cref="_BulkRootFileJob"/>.
+        /// remove_duplicates are added by <c>_BulkRootFileJob</c>.
         /// </summary>
         private static Dictionary<string, string> BuildValidateS3ExtraFields(ValidateS3FileOptions options)
         {
@@ -624,8 +600,8 @@ namespace ZeroBounceSDK
                 content.Add(new StringContent(_apiKey), "api_key");
                 content.Add(new StreamContent(file), "file", SafeMultipartFileName(fileName));
 
-                var result = await _client.PostAsync(url, content);
-                await DispatchJson(result, successCallback, failureCallback);
+                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -641,8 +617,8 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new FormUrlEncodedContent(fields);
-                var result = await _client.PostAsync(BulkApiRootUrl + path, content);
-                await DispatchJson(result, successCallback, failureCallback);
+                var result = await _client.PostAsync(BulkApiRootUrl + path, content).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -659,10 +635,10 @@ namespace ZeroBounceSDK
                 Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 baseUrl + "/filestatus?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId),
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         private void _BulkRootDeleteFile(string baseUrl, string fileId,
@@ -674,10 +650,10 @@ namespace ZeroBounceSDK
                 Fail(failureCallback, "Empty parameter: file_id", 0);
                 return;
             }
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 baseUrl + "/deletefile?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId),
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         private async Task _BulkRootGetFile(string baseUrl, string fileId, string localDownloadPath,
@@ -692,8 +668,8 @@ namespace ZeroBounceSDK
             try
             {
                 var url = baseUrl + "/getfile?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId);
-                var response = await _client.GetAsync(url);
-                await DeliverDownloadedFile(response, localDownloadPath, successCallback, failureCallback);
+                var response = await _client.GetAsync(url).ConfigureAwait(false);
+                await DeliverDownloadedFile(response, localDownloadPath, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -705,8 +681,8 @@ namespace ZeroBounceSDK
         {
             try
             {
-                var result = await _client.GetAsync(url);
-                await DeliverJson(result, successCallback, failureCallback);
+                var result = await _client.GetAsync(url).ConfigureAwait(false);
+                await DeliverJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -718,8 +694,8 @@ namespace ZeroBounceSDK
         {
             try
             {
-                var result = await _client.GetAsync(url);
-                await DeliverJsonToken(result, successCallback, failureCallback);
+                var result = await _client.GetAsync(url).ConfigureAwait(false);
+                await DeliverJsonToken(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -733,8 +709,8 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new FormUrlEncodedContent(form);
-                var result = await _client.PostAsync(url, content);
-                await DeliverJson(result, successCallback, failureCallback);
+                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                await DeliverJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -748,8 +724,8 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new FormUrlEncodedContent(form);
-                var result = await _client.PostAsync(url, content);
-                await DeliverJsonToken(result, successCallback, failureCallback);
+                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                await DeliverJsonToken(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -765,7 +741,7 @@ namespace ZeroBounceSDK
             Action<string> failureCallback, bool allowEmptyBody = false)
         {
             var status = (int)result.StatusCode;
-            var body = await ReadUsableBody(result, failureCallback, allowEmptyBody);
+            var body = await ReadUsableBody(result, failureCallback, allowEmptyBody).ConfigureAwait(false);
             if (body == null)
                 return;
             if (body.Trim().Length == 0)
@@ -787,7 +763,7 @@ namespace ZeroBounceSDK
             Action<string> failureCallback)
         {
             var status = (int)result.StatusCode;
-            var body = await ReadUsableBody(result, failureCallback);
+            var body = await ReadUsableBody(result, failureCallback).ConfigureAwait(false);
             if (body == null)
                 return;
             var token = ParseJson(body, status, failureCallback);

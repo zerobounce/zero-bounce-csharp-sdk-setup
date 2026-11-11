@@ -28,5 +28,18 @@ namespace ZeroBounceSDK
 
         //A list of domain formats we have for the specified domain. This list contains other formats (e.g. first_name, first, first.last, etc.) and the level of confidence we have in the respective format.
         [JsonProperty("other_domain_formats")] public List<ZBDomainFormat> OtherDomainFormats { get; set; }
+
+        public override string ToString()
+        {
+            return "ZBDomainSearchResponse{" +
+                   "domain='" + Domain + '\'' +
+                   ", companyName='" + CompanyName + '\'' +
+                   ", format='" + Format + '\'' +
+                   ", confidence=" + Confidence +
+                   ", didYouMean='" + DidYouMean + '\'' +
+                   ", failureReason='" + FailureReason + '\'' +
+                   ", otherDomainFormats=" + ZBValidateBatchResponse.ListText(OtherDomainFormats) +
+                   '}';
+        }
     }
 }

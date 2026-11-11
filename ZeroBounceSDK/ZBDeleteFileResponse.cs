@@ -5,7 +5,7 @@ namespace ZeroBounceSDK
 {
     public class ZBDeleteFileResponse : ZBResponse
     {
-        [JsonProperty("success")] public bool Success;
+        [JsonProperty("success")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool Success;
 
         [JsonProperty("message")] [JsonConverter(typeof(SingleOrArrayConverter<string>))]
         public List<string> Message;
