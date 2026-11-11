@@ -9,5 +9,18 @@ namespace ZeroBounceSDK
         [JsonProperty("email_batch")] public List<ZBValidateBatchResponseRow> EmailBatch { get; set; }
 
         [JsonProperty("errors")] public List<ZBBatchError> Errors { get; set; }
+
+        public override string ToString()
+        {
+            return "ZBValidateBatchResponse{" +
+                   "emailBatch=" + ListText(EmailBatch) +
+                   ", errors=" + ListText(Errors) +
+                   '}';
+        }
+
+        internal static string ListText<T>(List<T> items)
+        {
+            return items == null ? "null" : "[" + string.Join(", ", items) + "]";
+        }
     }
 }

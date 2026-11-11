@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -729,6 +730,7 @@ namespace ZeroBounceSDK
         private Result Send(HttpMethod method, string path, List<KeyValuePair<string, string>> query,
             JObject body, Action<string> fail, string[] secrets)
         {
+            Result result;
             try
             {
                 var request = new HttpRequestMessage(method, Url(path, query));
@@ -739,9 +741,46 @@ namespace ZeroBounceSDK
                     request.Content = new StringContent(body.ToString(Formatting.None),
                         Encoding.UTF8, "application/json");
                 }
+                result = Exchange(request);
+            }
+            catch (Exception e)
+            {
+                // Rebuilt rather than wrapped: the original holds the URL and headers.
+                Fail(fail, Redact(HttpErrors.MessageFromBody(e.Message, 0), secrets), 0);
+                return null;
+            }
 
+            // Outside the try: an exception from the caller's failure callback
+            // propagates instead of being reported back to it as a transport error.
+            if (result.Status >= 300 && result.Status < 400)
+            {
+                Fail(fail, "ZeroBounce returned a redirect, which this client does not follow.",
+                    result.Status);
+                return null;
+            }
+            if (result.Status > 299)
+            {
+                Fail(fail, Redact(HttpErrors.MessageFromBody(result.Body, result.Status), secrets),
+                    result.Status);
+                return null;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Sends one request and reads its body, blocking the calling thread.
+        /// The caller's SynchronizationContext is set aside meanwhile, so a UI
+        /// thread (WPF, WinForms, MAUI) cannot deadlock on a continuation that
+        /// waits for it, even inside a handler passed to the constructor.
+        /// </summary>
+        private Result Exchange(HttpRequestMessage request)
+        {
+            var context = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(null);
+            try
+            {
                 var response = _client.SendAsync(request).GetAwaiter().GetResult();
-                var result = new Result
+                return new Result
                 {
                     Status = (int)response.StatusCode,
                     ContentType = response.Content?.Headers.ContentType?.MediaType ?? "",
@@ -749,26 +788,10 @@ namespace ZeroBounceSDK
                         ? ""
                         : response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
                 };
-
-                if (result.Status >= 300 && result.Status < 400)
-                {
-                    Fail(fail, "ZeroBounce returned a redirect, which this client does not follow.",
-                        result.Status);
-                    return null;
-                }
-                if (result.Status > 299)
-                {
-                    Fail(fail, Redact(HttpErrors.MessageFromBody(result.Body, result.Status), secrets),
-                        result.Status);
-                    return null;
-                }
-                return result;
             }
-            catch (Exception e)
+            finally
             {
-                // Rebuilt rather than wrapped: the original holds the URL and headers.
-                Fail(fail, Redact(HttpErrors.MessageFromBody(e.Message, 0), secrets), 0);
-                return null;
+                SynchronizationContext.SetSynchronizationContext(context);
             }
         }
 

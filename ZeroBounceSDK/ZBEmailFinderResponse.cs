@@ -25,5 +25,17 @@ namespace ZeroBounceSDK
 
         //A reason for the unknown result. Possible values can be found in the "Possible reasons for unknown status" section below.
         [JsonProperty("failure_reason")] public string FailureReason;
+
+        public override string ToString()
+        {
+            return "ZBEmailFinderResponse{" +
+                   "email='" + Email + '\'' +
+                   ", emailConfidence=" + EmailConfidence +
+                   ", domain='" + Domain + '\'' +
+                   ", companyName='" + CompanyName + '\'' +
+                   ", didYouMean='" + DidYouMean + '\'' +
+                   ", failureReason='" + FailureReason + '\'' +
+                   '}';
+        }
     }
 }

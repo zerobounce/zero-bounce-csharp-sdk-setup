@@ -85,7 +85,7 @@ jobs:
 
       - name: Pack
         run: |
-          rm -f ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg
+          rm -f ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.snupkg
           dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
 
       - name: NuGet login (trusted publishing)
@@ -109,7 +109,14 @@ jobs:
             echo "Error: No .nupkg found under ZeroBounceSDK/bin/Release/"
             exit 1
           fi
-          echo "Pushing $NUPKG to NuGet..."
+          # The symbols package sits next to the .nupkg, and dotnet nuget push
+          # pushes it to nuget.org's symbol server along with the package.
+          SNUPKG="${NUPKG%.nupkg}.snupkg"
+          if [ ! -f "$SNUPKG" ]; then
+            echo "Error: No symbols package $SNUPKG next to $NUPKG"
+            exit 1
+          fi
+          echo "Pushing $NUPKG and $SNUPKG to NuGet..."
           dotnet nuget push "$NUPKG" \
             --api-key "$KEY" \
             --source https://api.nuget.org/v3/index.json \

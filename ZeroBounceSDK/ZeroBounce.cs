@@ -6,6 +6,7 @@ using System.Net;
 using System.Net.Http;
 using System.Reflection;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -60,6 +61,24 @@ namespace ZeroBounceSDK
             }
         }
 
+        /// <summary>
+        /// A key with surrounding whitespace or control characters is never a
+        /// valid key, and the transport would quote it, unredacted, in its own
+        /// error. The Warmup client rejects it the same way.
+        /// </summary>
+        private static void RequireUsableApiKey(string apiKey)
+        {
+            if (string.IsNullOrWhiteSpace(apiKey))
+                throw new ZBClientException("Empty parameter: api_key");
+            if (apiKey != apiKey.Trim())
+                throw new ZBClientException("api_key has surrounding whitespace or control characters");
+            foreach (var c in apiKey)
+            {
+                if (char.IsControl(c))
+                    throw new ZBClientException("api_key has surrounding whitespace or control characters");
+            }
+        }
+
         private static string Enc(string value) => Uri.EscapeDataString(value ?? "");
 
         private static string RedactApiKey(string message, string apiKey)
@@ -80,22 +99,26 @@ namespace ZeroBounceSDK
         /// <summary>
         /// Initialize the SDK with your API key. Uses default API base URL.
         /// </summary>
-        /// <exception cref="ZBClientException">Thrown when apiKey is null or whitespace.</exception>
+        /// <exception cref="ZBClientException">
+        /// Thrown when apiKey is null or whitespace, or has surrounding whitespace
+        /// or control characters.
+        /// </exception>
         public void Initialize(string apiKey)
         {
-            if (string.IsNullOrWhiteSpace(apiKey))
-                throw new ZBClientException("Empty parameter: api_key");
+            RequireUsableApiKey(apiKey);
             _apiKey = apiKey;
         }
 
         /// <summary>
         /// Initialize the SDK with your API key and a predefined API base URL.
         /// </summary>
-        /// <exception cref="ZBClientException">Thrown when apiKey is null or whitespace.</exception>
+        /// <exception cref="ZBClientException">
+        /// Thrown when apiKey is null or whitespace, or has surrounding whitespace
+        /// or control characters.
+        /// </exception>
         public void Initialize(string apiKey, ZBApiURL apiBaseUrl)
         {
-            if (string.IsNullOrWhiteSpace(apiKey))
-                throw new ZBClientException("Empty parameter: api_key");
+            RequireUsableApiKey(apiKey);
             _apiKey = apiKey;
             _apiBaseUrl = ZBApiURLConverter.GetApiURLString(apiBaseUrl);
         }
@@ -104,11 +127,13 @@ namespace ZeroBounceSDK
         /// Initialize the SDK with your API key and a custom API base URL (e.g. for testing).
         /// Trailing slashes are removed from the base URL.
         /// </summary>
-        /// <exception cref="ZBClientException">Thrown when apiKey is null or whitespace.</exception>
+        /// <exception cref="ZBClientException">
+        /// Thrown when apiKey is null or whitespace, or has surrounding whitespace
+        /// or control characters, or when baseUrl is not an https:// URL.
+        /// </exception>
         public void Initialize(string apiKey, string baseUrl)
         {
-            if (string.IsNullOrWhiteSpace(apiKey))
-                throw new ZBClientException("Empty parameter: api_key");
+            RequireUsableApiKey(apiKey);
             _apiKey = apiKey;
             _apiBaseUrl = baseUrl == null ? ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL) : baseUrl.TrimEnd('/');
             RequireHttpsUrl(_apiBaseUrl);
@@ -151,7 +176,7 @@ namespace ZeroBounceSDK
                     form["greylist_processing"] = options.GreylistProcessing.Value ? "true" : "false";
                 if (options.CallbackUrl != null)
                     form["callback_url"] = options.CallbackUrl;
-                _sendFormPostRequest(_apiBaseUrl + "/validate", form, successCallback, failureCallback).Wait();
+                RunSync(() => _sendFormPostRequest(_apiBaseUrl + "/validate", form, successCallback, failureCallback));
                 return;
             }
 
@@ -172,7 +197,7 @@ namespace ZeroBounceSDK
                     query += "&callback_url=" + Enc(options.CallbackUrl);
             }
 
-            _sendRequest(query, successCallback, failureCallback).Wait();
+            RunSync(() => _sendRequest(query, successCallback, failureCallback));
         }
 
         /// <param name="emailBatch">A list of ZBValidateEmailRow objects</param>
@@ -228,11 +253,11 @@ namespace ZeroBounceSDK
             }
             var json = JsonConvert.SerializeObject(requestData);
 
-            _sendJsonRequest(
+            RunSync(() => _sendJsonRequest(
                 _apiBaseUrl + "/validatebatch",
                 json,
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         /// <sumary>This API will tell you how many credits you have left on your account. It's simple, fast and easy to use.</sumary>
@@ -242,8 +267,8 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
 
-            _sendRequest(_apiBaseUrl + "/getcredits?api_key=" + Enc(_apiKey),
-                successCallback, failureCallback).Wait();
+            RunSync(() => _sendRequest(_apiBaseUrl + "/getcredits?api_key=" + Enc(_apiKey),
+                successCallback, failureCallback));
         }
 
         /// <param name="startDate">The start date of when you want to view API usage</param>
@@ -255,12 +280,12 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
 
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 _apiBaseUrl + "/getapiusage?api_key=" + Enc(_apiKey)
                 + "&start_date=" + Enc(startDate.ToString("yyyy-MM-dd"))
                 + "&end_date=" + Enc(endDate.ToString("yyyy-MM-dd")),
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         /// <param name="email">The email address for which we are interested in getting the engagement</param>
@@ -269,11 +294,11 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
 
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 _apiBaseUrl + "/activity?api_key=" + Enc(_apiKey)
                 + "&email=" + Enc(email),
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         /// <summary>Real-time AI scoring for a single email (GET /scoring).</summary>
@@ -282,11 +307,11 @@ namespace ZeroBounceSDK
         {
             if (InvalidApiKey(failureCallback)) return;
 
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 _apiBaseUrl + "/scoring?api_key=" + Enc(_apiKey)
                 + "&email=" + Enc(email),
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         /// <summary>Real-time AI scoring for a single email (POST /scoring, form-encoded).</summary>
@@ -300,13 +325,13 @@ namespace ZeroBounceSDK
                 { "api_key", _apiKey },
                 { "email", email }
             };
-            _sendFormPostRequest(_apiBaseUrl + "/scoring", form, successCallback, failureCallback).Wait();
+            RunSync(() => _sendFormPostRequest(_apiBaseUrl + "/scoring", form, successCallback, failureCallback));
         }
 
         /// <param name="domain">The email domain for which to find the email format.</param>
-        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
-        /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
-        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        /// <param name="firstName">The first name of the person whose email format is being searched.</param>
+        /// <param name="middleName">The middle name of the person whose email format is being searched. [optional]</param>
+        /// <param name="lastName">The last name of the person whose email format is being searched. [optional]</param>
         public void FindEmailByDomain(
             string domain, string firstName, string middleName, string lastName,
             Action<ZBEmailFinderResponse> successCallback,
@@ -316,8 +341,8 @@ namespace ZeroBounceSDK
         }
 
         /// <param name="domain">The email domain for which to find the email format.</param>
-        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
-        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        /// <param name="firstName">The first name of the person whose email format is being searched.</param>
+        /// <param name="lastName">The last name of the person whose email format is being searched. [optional]</param>
         public void FindEmailByDomain(
             string domain, string firstName, string lastName,
             Action<ZBEmailFinderResponse> successCallback,
@@ -327,7 +352,7 @@ namespace ZeroBounceSDK
         }
 
         /// <param name="domain">The email domain for which to find the email format.</param>
-        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        /// <param name="firstName">The first name of the person whose email format is being searched.</param>
         public void FindEmailByDomain(
             string domain, string firstName,
             Action<ZBEmailFinderResponse> successCallback,
@@ -336,10 +361,10 @@ namespace ZeroBounceSDK
             _FindEmail(domain, null, firstName, null, null, successCallback, failureCallback);
         }
 
-        /// <param name="company_name">The company name for which to find the email format.</param>
-        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
-        /// <param name="middle_name">The middle name of the person whose email format is being searched. [optional]</param>
-        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        /// <param name="companyName">The company name for which to find the email format.</param>
+        /// <param name="firstName">The first name of the person whose email format is being searched.</param>
+        /// <param name="middleName">The middle name of the person whose email format is being searched. [optional]</param>
+        /// <param name="lastName">The last name of the person whose email format is being searched. [optional]</param>
         public void FindEmailByCompanyName(
             string companyName, string firstName, string middleName, string lastName,
             Action<ZBEmailFinderResponse> successCallback,
@@ -348,9 +373,9 @@ namespace ZeroBounceSDK
             _FindEmail(null, companyName, firstName, middleName, lastName, successCallback, failureCallback);
         }
 
-        /// <param name="company_name">The company name for which to find the email format.</param>
-        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
-        /// <param name="last_name">The last name of the person whose email format is being searched. [optional]</param>
+        /// <param name="companyName">The company name for which to find the email format.</param>
+        /// <param name="firstName">The first name of the person whose email format is being searched.</param>
+        /// <param name="lastName">The last name of the person whose email format is being searched. [optional]</param>
         public void FindEmailByCompanyName(
             string companyName, string firstName, string lastName,
             Action<ZBEmailFinderResponse> successCallback,
@@ -359,8 +384,8 @@ namespace ZeroBounceSDK
             _FindEmail(null, companyName, firstName, null, lastName, successCallback, failureCallback);
         }
 
-        /// <param name="company_name">The company name for which to find the email format.</param>
-        /// <param name="first_name">The first name of the person whose email format is being searched.</param>
+        /// <param name="companyName">The company name for which to find the email format.</param>
+        /// <param name="firstName">The first name of the person whose email format is being searched.</param>
         public void FindEmailByCompanyName(
             string companyName, string firstName,
             Action<ZBEmailFinderResponse> successCallback,
@@ -403,11 +428,11 @@ namespace ZeroBounceSDK
                 url += "&last_name=" + Enc(lastName ?? "");
             }
 
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 url,
                 successCallback,
                 failureCallback,
-                messageOnlyIsFailure: true).Wait();
+                messageOnlyIsFailure: true));
         }
 
 
@@ -420,7 +445,7 @@ namespace ZeroBounceSDK
             _FindDomain(domain, null, successCallback, failureCallback);
         }
 
-        /// <param name="company_name">The company name for which to find the email format</param>
+        /// <param name="companyName">The company name for which to find the email format</param>
         public void FindDomainByCompanyName(
             string companyName,
             Action<ZBDomainSearchResponse> successCallback,
@@ -454,11 +479,11 @@ namespace ZeroBounceSDK
                 url += "&company_name=" + Enc(companyName ?? "");
             }
 
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 url,
                 successCallback,
                 failureCallback,
-                messageOnlyIsFailure: true).Wait();
+                messageOnlyIsFailure: true));
         }
 
 
@@ -490,9 +515,9 @@ namespace ZeroBounceSDK
                 return;
             }
 
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/filestatus?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId),
-                successCallback, failureCallback).Wait();
+                successCallback, failureCallback));
         }
 
         
@@ -540,17 +565,10 @@ namespace ZeroBounceSDK
         public void ScoringSendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            try
+            if (!TryOpenUpload(filePath, failureCallback, out var file, out var fileName)) return;
+            using (file)
             {
-                var fileName = Path.GetFileName(filePath);
-                using (var file = File.OpenRead(filePath))
-                {
-                    _SendFile(true, file, fileName, options, successCallback, failureCallback).Wait();
-                }
-            }
-            catch (Exception e)
-            {
-                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
+                RunSync(() => _SendFile(true, file, fileName, options, successCallback, failureCallback));
             }
         }
 
@@ -562,7 +580,7 @@ namespace ZeroBounceSDK
         public void ScoringSendFile(Stream file, string fileName, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(true, file, fileName, options, successCallback, failureCallback).Wait();
+            RunSync(() => _SendFile(true, file, fileName, options, successCallback, failureCallback));
         }
 
         /// <summary>
@@ -573,17 +591,10 @@ namespace ZeroBounceSDK
         public void SendFile(string filePath, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            try
+            if (!TryOpenUpload(filePath, failureCallback, out var file, out var fileName)) return;
+            using (file)
             {
-                var fileName = Path.GetFileName(filePath);
-                using (var file = File.OpenRead(filePath))
-                {
-                    _SendFile(false, file, fileName, options, successCallback, failureCallback).Wait();
-                }
-            }
-            catch (Exception e)
-            {
-                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
+                RunSync(() => _SendFile(false, file, fileName, options, successCallback, failureCallback));
             }
         }
 
@@ -595,7 +606,7 @@ namespace ZeroBounceSDK
         public void SendFile(Stream file, string fileName, SendFileOptions options,
             Action<ZBSendFileResponse> successCallback, Action<string> failureCallback)
         {
-            _SendFile(false, file, fileName, options, successCallback, failureCallback).Wait();
+            RunSync(() => _SendFile(false, file, fileName, options, successCallback, failureCallback));
         }
 
         private async Task _SendFile(bool scoring, Stream file, string fileName, SendFileOptions options,
@@ -638,8 +649,8 @@ namespace ZeroBounceSDK
                 }
 
                 var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendfile";
-                var result = await _client.PostAsync(url, content);
-                await DispatchJson(result, successCallback, failureCallback);
+                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -655,7 +666,7 @@ namespace ZeroBounceSDK
         public void ScoringGetFile(string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(true, fileId, localDownloadPath, null, successCallback, failureCallback).Wait();
+            RunSync(() => _GetFile(true, fileId, localDownloadPath, null, successCallback, failureCallback));
         }
 
         /// <summary>
@@ -664,7 +675,7 @@ namespace ZeroBounceSDK
         public void ScoringGetFile(string fileId, string localDownloadPath, GetFileOptions getFileOptions,
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(true, fileId, localDownloadPath, getFileOptions, successCallback, failureCallback).Wait();
+            RunSync(() => _GetFile(true, fileId, localDownloadPath, getFileOptions, successCallback, failureCallback));
         }
         
         /// <summary>
@@ -675,7 +686,7 @@ namespace ZeroBounceSDK
         public void GetFile(string fileId, string localDownloadPath, 
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(false, fileId, localDownloadPath, null, successCallback, failureCallback).Wait();
+            RunSync(() => _GetFile(false, fileId, localDownloadPath, null, successCallback, failureCallback));
         }
 
         /// <summary>
@@ -684,7 +695,7 @@ namespace ZeroBounceSDK
         public void GetFile(string fileId, string localDownloadPath, GetFileOptions getFileOptions,
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
-            _GetFile(false, fileId, localDownloadPath, getFileOptions, successCallback, failureCallback).Wait();
+            RunSync(() => _GetFile(false, fileId, localDownloadPath, getFileOptions, successCallback, failureCallback));
         }
 
         private static string DownloadTypeToQueryValue(ZBDownloadType t)
@@ -722,8 +733,8 @@ namespace ZeroBounceSDK
             try
             {
                 var url = BuildGetFileUrl(BulkApiBaseUrl, scoring, _apiKey, fileId, getFileOptions);
-                var response = await _client.GetAsync(url);
-                await DeliverDownloadedFile(response, localDownloadPath, successCallback, failureCallback);
+                var response = await _client.GetAsync(url).ConfigureAwait(false);
+                await DeliverDownloadedFile(response, localDownloadPath, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -755,10 +766,10 @@ namespace ZeroBounceSDK
                 return;
             }
 
-            _sendRequest(
+            RunSync(() => _sendRequest(
                 BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/deletefile?api_key=" + Enc(_apiKey) + "&file_id=" + Enc(fileId),
                 successCallback,
-                failureCallback).Wait();
+                failureCallback));
         }
 
         /// <summary>
@@ -778,15 +789,99 @@ namespace ZeroBounceSDK
         /// <summary>Records the detail, then hands the short message to the caller.</summary>
         private void Fail(Action<string> failureCallback, string message, int statusCode)
         {
-            LastApiError = new ZBApiError(message, statusCode);
-            failureCallback(message);
+            var error = new ZBApiError(message, statusCode);
+            Deliver(() =>
+            {
+                LastApiError = error;
+                failureCallback(message);
+            });
         }
 
         /// <summary>Clears the last error, then hands the result to the caller.</summary>
         private void Succeed<T>(Action<T> successCallback, T value)
         {
-            LastApiError = null;
-            successCallback(value);
+            Deliver(() =>
+            {
+                LastApiError = null;
+                successCallback(value);
+            });
+        }
+
+        /// <summary>
+        /// The callbacks of the request <see cref="RunSync"/> is waiting for.
+        /// They are held back until the request has finished, so they run on
+        /// the caller's own thread and outside the SDK's error handling.
+        /// </summary>
+        private static readonly AsyncLocal<List<Action>> PendingCallbacks = new AsyncLocal<List<Action>>();
+
+        private static void Deliver(Action callback)
+        {
+            var pending = PendingCallbacks.Value;
+            if (pending != null)
+                pending.Add(callback);
+            else
+                callback();
+        }
+
+        /// <summary>
+        /// Runs one request to completion, then its callback on the calling
+        /// thread.
+        /// <para>
+        /// The public methods are synchronous over async I/O. Blocking on a
+        /// task from a UI thread (WPF, WinForms, MAUI) deadlocks when anything
+        /// in it resumes on the captured SynchronizationContext, which waits
+        /// for the very thread that is blocked. So the request starts with no
+        /// SynchronizationContext, every await in the SDK uses
+        /// ConfigureAwait(false), and the caller's context is restored before
+        /// the callback runs.
+        /// </para>
+        /// <para>
+        /// An exception thrown by the caller's own callback propagates to the
+        /// caller as it was thrown; it is never reported through the failure
+        /// callback or <see cref="LastApiError"/> as if the API had failed.
+        /// </para>
+        /// </summary>
+        private static void RunSync(Func<Task> request)
+        {
+            var pending = new List<Action>();
+            var outer = PendingCallbacks.Value;
+            var context = SynchronizationContext.Current;
+            PendingCallbacks.Value = pending;
+            try
+            {
+                SynchronizationContext.SetSynchronizationContext(null);
+                request().GetAwaiter().GetResult();
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(context);
+                PendingCallbacks.Value = outer;
+            }
+            foreach (var callback in pending)
+                callback();
+        }
+
+        /// <summary>
+        /// Opens a file to upload. A missing or unreadable file is reported
+        /// through the failure callback; the upload itself happens outside this
+        /// check, so an exception from a callback is never mistaken for a file
+        /// error.
+        /// </summary>
+        private bool TryOpenUpload(string filePath, Action<string> failureCallback, out FileStream file, out string fileName)
+        {
+            try
+            {
+                fileName = Path.GetFileName(filePath);
+                file = File.OpenRead(filePath);
+                return true;
+            }
+            catch (Exception e)
+            {
+                file = null;
+                fileName = null;
+                Fail(failureCallback, RedactApiKey(e.Message, _apiKey), 0);
+                return false;
+            }
         }
 
         private bool InvalidApiKey(Action<string> failureCallback)
@@ -843,8 +938,8 @@ namespace ZeroBounceSDK
         {
             try
             {
-                var result = await _client.GetAsync(url);
-                await DispatchJson(result, successCallback, failureCallback, messageOnlyIsFailure);
+                var result = await _client.GetAsync(url).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback, messageOnlyIsFailure).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -857,9 +952,9 @@ namespace ZeroBounceSDK
             var status = 0;
             try
             {
-                var result = await _client.GetAsync(url);
+                var result = await _client.GetAsync(url).ConfigureAwait(false);
                 status = (int)result.StatusCode;
-                var body = await ReadUsableBody(result, failureCallback);
+                var body = await ReadUsableBody(result, failureCallback).ConfigureAwait(false);
                 if (body == null)
                     return;
                 List<T> response;
@@ -886,8 +981,8 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var result = await _client.PostAsync(url, content);
-                await DispatchJson(result, successCallback, failureCallback);
+                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -902,8 +997,8 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new FormUrlEncodedContent(form);
-                var result = await _client.PostAsync(url, content);
-                await DispatchJson(result, successCallback, failureCallback);
+                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -922,7 +1017,7 @@ namespace ZeroBounceSDK
             where T : ZBResponse
         {
             var status = (int)result.StatusCode;
-            var body = await ReadUsableBody(result, failureCallback);
+            var body = await ReadUsableBody(result, failureCallback).ConfigureAwait(false);
             if (body == null)
                 return;
             // LIVE: guessformat answers an invalid or drained key with an HTTP 200
@@ -937,6 +1032,11 @@ namespace ZeroBounceSDK
             try
             {
                 response = JsonConvert.DeserializeObject<T>(body);
+            }
+            catch (ZBInvalidValueException e)
+            {
+                Fail(failureCallback, e.Message, status);
+                return;
             }
             catch (JsonException)
             {
@@ -982,7 +1082,7 @@ namespace ZeroBounceSDK
         private async Task<string> ReadUsableBody(HttpResponseMessage result, Action<string> failureCallback,
             bool allowEmptyBody = false)
         {
-            var body = result.Content == null ? "" : await result.Content.ReadAsStringAsync();
+            var body = result.Content == null ? "" : await result.Content.ReadAsStringAsync().ConfigureAwait(false);
             var media = result.Content?.Headers.ContentType?.MediaType ?? "";
             var status = (int)result.StatusCode;
             if (allowEmptyBody && status <= 299 && string.IsNullOrWhiteSpace(body))
@@ -1010,7 +1110,7 @@ namespace ZeroBounceSDK
         {
             var bytes = response.Content == null
                 ? new byte[0]
-                : await response.Content.ReadAsByteArrayAsync();
+                : await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
             var body = Encoding.UTF8.GetString(bytes);
             var media = response.Content?.Headers.ContentType?.MediaType ?? "";
             var status = (int)response.StatusCode;
@@ -1021,35 +1121,17 @@ namespace ZeroBounceSDK
                 return;
             }
 
-            if (media.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0)
+            // A JSON body is never the file, whatever the content type says:
+            // an unknown or unfinished file id comes back as {"success": false,
+            // "message": ...} or {"error": ...} with an HTTP 200, sometimes
+            // labelled text/plain or application/octet-stream. Neither is
+            // written to disk, and neither is a success.
+            if (media.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0 || HttpErrors.IsJson(body))
             {
-                ZBGetFileResponse jsonResponse;
-                try
-                {
-                    jsonResponse = JsonConvert.DeserializeObject<ZBGetFileResponse>(body);
-                }
-                catch (JsonException)
-                {
-                    Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
-                    return;
-                }
-                var isError = jsonResponse != null &&
-                    (!jsonResponse.Success ||
-                     !string.IsNullOrEmpty(jsonResponse.Message) ||
-                     !string.IsNullOrEmpty(jsonResponse.Error) ||
-                     !string.IsNullOrEmpty(jsonResponse.ErrorMessage));
-                if (isError || jsonResponse == null)
-                {
-                    var message = jsonResponse == null
-                        ? HttpErrors.MessageFromBody(body, status)
-                        : (jsonResponse.Message
-                           ?? jsonResponse.ErrorMessage
-                           ?? jsonResponse.Error
-                           ?? "Request not processed successfully.");
-                    Fail(failureCallback, RedactApiKey(HttpErrors.StripErrorPrefix(message), _apiKey), status);
-                    return;
-                }
-                Succeed(successCallback, jsonResponse);
+                var message = HttpErrors.MessageFromBody(body, status);
+                if (HttpErrors.IsJson(body) && message == body.Trim())
+                    message = "ZeroBounce returned a JSON response instead of the file.";
+                Fail(failureCallback, RedactApiKey(message, _apiKey), status);
                 return;
             }
 

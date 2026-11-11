@@ -8,5 +8,13 @@ namespace ZeroBounceSDK
 
         [JsonProperty("confidence")] [JsonConverter(typeof(ZBConfidenceConverter))]
         public ZBConfidence Confidence { get; set; }
+
+        public override string ToString()
+        {
+            return "ZBDomainFormat{" +
+                   "format='" + Format + '\'' +
+                   ", confidence=" + Confidence +
+                   '}';
+        }
     }
 }

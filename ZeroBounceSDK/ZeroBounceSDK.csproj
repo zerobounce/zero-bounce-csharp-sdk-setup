@@ -17,6 +17,19 @@
 		<PackageTags>zerobounce;email-validation;email-verification;email-verifier;email-finder;ai-scoring;deliverability;sdk;api</PackageTags>
 		<PackageId>ZeroBounce.SDK</PackageId>
 		<PackageLicenseExpression>MIT</PackageLicenseExpression>
+		<!-- IntelliSense: ship ZeroBounceSDK.xml in the package. -->
+		<GenerateDocumentationFile>true</GenerateDocumentationFile>
+		<!-- Not every public member or parameter has a doc comment yet. -->
+		<NoWarn>$(NoWarn);CS1591;CS1573</NoWarn>
+		<!-- Debugging: a .snupkg symbols package, with SourceLink pointing at GitHub. -->
+		<IncludeSymbols>true</IncludeSymbols>
+		<SymbolPackageFormat>snupkg</SymbolPackageFormat>
+		<PublishRepositoryUrl>true</PublishRepositoryUrl>
+		<EmbedUntrackedSources>true</EmbedUntrackedSources>
+		<Deterministic>true</Deterministic>
+		<ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+		<!-- CA2007 (ConfigureAwait) is an error in this project, see .editorconfig. -->
+		<EnableNETAnalyzers>true</EnableNETAnalyzers>
     </PropertyGroup>
 
     <ItemGroup>
@@ -36,6 +49,7 @@
 
     <ItemGroup>
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+      <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.403" PrivateAssets="All" />
     </ItemGroup>
 
 </Project>

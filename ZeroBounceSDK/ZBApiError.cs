@@ -29,7 +29,7 @@ namespace ZeroBounceSDK
 
         public override string ToString()
         {
-            return StatusCode == 0 ? Message : "HTTP " + StatusCode + ": " + Message;
+            return "ZBApiError{statusCode=" + StatusCode + ", message='" + Message + "'}";
         }
     }
 }

@@ -12,8 +12,13 @@ permissions:
 
 jobs:
   test:
-    name: Test
+    name: Test (.NET ${{ matrix.dotnet }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 10.0 is the current LTS (and the oldest supported .NET); 11.0 is the newest release.
+        dotnet: ["10.0.x", "11.0.x"]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,10 +27,33 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: "10.0.x"
+          dotnet-version: ${{ matrix.dotnet }}
+
+      # The test project targets net10.0. On the 11.0 lane, run it on the newest installed
+      # runtime (11) rather than on a .NET 10 runtime the runner image may also have.
+      - name: Run the tests on the newest runtime
+        if: matrix.dotnet == '11.0.x'
+        run: echo "DOTNET_ROLL_FORWARD=LatestMajor" >> "$GITHUB_ENV"
+
+      - name: Show the .NET SDKs and runtimes
+        run: dotnet --info
 
       - name: Restore
         run: dotnet restore
 
       - name: Run tests
         run: dotnet test ZeroBounceTests/ZeroBounceTests.csproj --no-restore -v normal
+
+      # The WPF sample targets Windows; EnableWindowsTargeting lets it compile here.
+      - name: Build the sample
+        run: dotnet build ZeroBounceSample/ZeroBounceSample.csproj --no-restore
+
+      - name: Check the package
+        run: |
+          dotnet build ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-restore
+          dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
+          NUPKG=ZeroBounceSDK/bin/Release/ZeroBounce.SDK.$(sed -n 's:.*<PackageVersion>\(.*\)</PackageVersion>.*:\1:p' ZeroBounceSDK/ZeroBounceSDK.csproj).nupkg
+          unzip -l "$NUPKG"
+          unzip -l "$NUPKG" | grep -q 'lib/netstandard2.0/ZeroBounceSDK.xml' || { echo "No XML docs in $NUPKG"; exit 1; }
+          if unzip -l "$NUPKG" | grep -qiE 'Tests|\.env'; then echo "Unexpected file in $NUPKG"; exit 1; fi
+          test -f "${NUPKG%.nupkg}.snupkg" || { echo "No symbols package next to $NUPKG"; exit 1; }

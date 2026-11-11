@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `Initialize` throws `ZBClientException` ("api_key has surrounding whitespace or control characters") for a key with leading or trailing whitespace or any control character, in all three overloads. 3.0.0 accepted such a key and sent it, percent-encoded, to the API. `ZeroBounceWarmup` already rejected it.
+- **Breaking:** an exception thrown by your own success or failure callback propagates to your call unchanged. In 3.0.0 an exception from a success callback was passed to the failure callback as if the API had failed, and set `LastApiError` (with status 0). A failure callback that threw was called a second time with its own exception's message, and the exception then came out wrapped in an `AggregateException`; the file-path `SendFile`, `ScoringSendFile`, `SendEmailFinderFile`, `SendDomainSearchFile` and `SendListEvaluatorFile` overloads called it a third time. `ZeroBounceWarmup` called a throwing failure callback twice on an HTTP error. Each callback now runs once.
+- Callbacks run on the thread that made the call, after the request has finished. In 3.0.0 they usually ran on a thread-pool thread.
+- `ZBApiError.ToString()` names the type and both fields: `ZBApiError{statusCode=400, message='...'}`. 3.0.0 returned `HTTP 400: ...`, or the message alone for status 0.
+- A response boolean other than `true`/`false`, `"true"`/`"false"` (any case), `1`/`0` or `"1"`/`"0"` is a failure: "ZeroBounce returned an invalid boolean for <field>". 3.0.0 read any other number as `true` (`2` was `true`), and failed on `"1"`, `"0"` and other strings with the whole response body as the message. A JSON `null` reads as `false`, like a missing field (`null` for `CatchallDomain`). This covers `ZBValidateResponse`, `ZBValidateBatchResponseRow`, `ZBActivityResponse.Found` and the bulk `Success` fields.
+- Repository only, not in the package: the WPF sample (`ZeroBounceSample`) is an SDK-style `net10.0-windows` project that references the SDK in this repository instead of a missing local `ZeroBounceSDK` 0.0.1 package and `Newtonsoft.Json` 12.0.2, and CI builds it. Its broken `SendFile` call and leftover Avalonia handler are fixed.
+- Repository only: CI packs the SDK and checks the package for the XML docs and the symbols package; a test sweeps every public request method and fails if any of them sends a request over anything but HTTPS.
+
+### Added
+
+- `ToString()` on `ZBValidateBatchResponse`, `ZBValidateBatchResponseRow`, `ZBEmailFinderResponse`, `ZBDomainSearchResponse`, `ZBBatchError` and `ZBDomainFormat`, naming the type and every field. They used to print the type name only.
+- The package includes its XML documentation (`ZeroBounceSDK.xml`) for IntelliSense, and is built deterministically with a `.snupkg` symbols package whose SourceLink points at this repository. The Publish workflow pushes both. `Microsoft.SourceLink.GitHub` is a build-only dependency; consumers still depend on `Newtonsoft.Json` only.
+
+### Fixed
+
+- `ZBSendFileResponse.ToString()` no longer throws `ArgumentNullException` when `Message` is null (a response without a `message` field); in 3.0.0 it called `string.Join` on the null list.
+- Calling any method from a UI thread (WPF, WinForms, MAUI, or any other single-threaded `SynchronizationContext`) no longer deadlocks. Every method blocked on async I/O whose continuations needed that same thread; the repository's own WPF sample hung this way. Every `await` in the library now uses `ConfigureAwait(false)` (a missing one fails the build), and each call runs its request without the caller's `SynchronizationContext`, which is restored before the callback runs. `ZeroBounceWarmup` was safe with its default handler but could deadlock with a handler passed to its constructor; it is covered too. The public API is unchanged.
+- `GetFile`, `ScoringGetFile`, `EmailFinderGetFile` and `DomainSearchGetFile` treat any JSON body as an error with its HTTP status, whatever the content type, and write no file. In 3.0.0 `{"error": ...}` or `{"success": false, ...}` labelled `text/plain`, `application/octet-stream` or nothing was saved as the results file and reported as a success, and an `application/json` body with no `error`, `error_message` or `message` text and no `"success": false` (such as `{"foo": 1}`, `{"detail": "Not found"}` or `{"success": true}`) reached the success callback with an empty `LocalFilePath`. A `detail` text is now the failure message; a body with no message at all reports "ZeroBounce returned a JSON response instead of the file."
+
 ## [3.0.0] - 2026-11-11
+
+### Upgrading from 2.x
+
+- **Move error handling out of your success callbacks.** A non-2xx response to `SendFile`, `ScoringSendFile` or `ValidateBatch`, `{"success": false}` on an HTTP 200, an invalid or drained key on `Validate`, `GetActivity`, `GetApiUsage`, the email finder and domain search, an account-level `ValidateBatch` error, and HTML, empty or non-JSON bodies now reach the failure callback. `GetCredits` still returns `-1` for an invalid key, and a per-address `ValidateBatch` error still arrives on the successful result.
+- **`SendFileOptions.HasHeaderRow` and `RemoveDuplicate` are `bool?`.** Code that reads them as `bool` must change, and code compiled against 2.x must be recompiled. Setting `RemoveDuplicate = false` is now sent; 2.x dropped it.
+- **Custom base URLs must start with `https://`.** The built-in `ZBApiURL` regions are unaffected.
+- **`EmailFinder()` is removed.** Use `FindEmailByDomain` / `FindEmailByCompanyName`, or `FindDomainByDomain` / `FindDomainByCompanyName`.
 
 ### Added
 

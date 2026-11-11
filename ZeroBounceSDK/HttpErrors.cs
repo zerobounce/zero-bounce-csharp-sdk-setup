@@ -26,6 +26,22 @@ namespace ZeroBounceSDK
                 || lower.Contains("<body");
         }
 
+        /// <summary>Whether the whole body is a JSON object or array.</summary>
+        public static bool IsJson(string body)
+        {
+            var trimmed = (body ?? "").Trim();
+            if (trimmed.Length == 0 || (trimmed[0] != '{' && trimmed[0] != '[')) return false;
+            try
+            {
+                JToken.Parse(trimmed);
+                return true;
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
+        }
+
         public static string StripErrorPrefix(string message)
         {
             message = (message ?? "").Trim();

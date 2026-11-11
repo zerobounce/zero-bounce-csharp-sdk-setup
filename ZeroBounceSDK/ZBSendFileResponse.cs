@@ -7,7 +7,7 @@ namespace ZeroBounceSDK
 {
     public class ZBSendFileResponse : ZBResponse
     {
-        [JsonProperty("success")] public bool Success;
+        [JsonProperty("success")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool Success;
 
         [JsonProperty("message")] [JsonConverter(typeof(SingleOrArrayConverter<string>))]
         public List<string> Message;
@@ -19,7 +19,7 @@ namespace ZeroBounceSDK
         {
             return "ZBSendFileResponse{" +
                           "success=" + Success +
-                          ", message='" + string.Join(", ", Message)+ '\'' +
+                          ", message='" + (Message == null ? "" : string.Join(", ", Message)) + '\'' +
                           ", fileName='" + FileName + '\'' +
                           ", fileId='" + FileId + '\'' +
                           '}';

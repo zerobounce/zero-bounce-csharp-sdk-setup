@@ -45,10 +45,10 @@ namespace ZeroBounceSDK
         [JsonProperty("active_first_seen")] public string ActiveFirstSeen;
 
         //[true/false] If the email comes from a free provider.
-        [JsonProperty("free_email")] public bool FreeEmail;
+        [JsonProperty("free_email")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool FreeEmail;
 
         //[true/false] Does the domain have an MX record.
-        [JsonProperty("mx_found")] public bool MxFound;
+        [JsonProperty("mx_found")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool MxFound;
 
         //The preferred MX record of the domain
         [JsonProperty("mx_record")] public string MxRecord;
@@ -57,7 +57,7 @@ namespace ZeroBounceSDK
         [JsonProperty("smtp_provider")] public string SmtpProvider;
 
         //[true/false or null] Is the domain name a catch-all (the domain email server responds with valid to any SMTP checks and emailing to an invalid might not bounce)?
-        [JsonProperty("catchall_domain")] public bool? CatchallDomain;
+        [JsonProperty("catchall_domain")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool? CatchallDomain;
 
         //The first name of the owner of the email when available or [null].
         [JsonProperty("firstname")] public string FirstName;
