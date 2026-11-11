@@ -675,3 +675,7 @@ If you have the .NET SDK installed locally, you can still use `dotnet test` / `d
 2. **Actions → Publish → Run workflow** with that tag.
 
 Registry: [ZeroBounce.SDK on NuGet](https://www.nuget.org/packages/ZeroBounce.SDK)
+
+## License
+
+MIT. See [LICENSE](LICENSE).
