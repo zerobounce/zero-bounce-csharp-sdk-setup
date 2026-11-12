@@ -603,6 +603,67 @@ public class OfflineTransportTests
     }
 
     /// <summary>
+    /// A 2xx body that is not JSON is an API error with status 200 on every JSON
+    /// call of both clients, Warmup included (E7): plain text, a CSV under
+    /// application/json, and the bodies only a lenient parser reads as JSON
+    /// (unquoted or single-quoted names, a trailing comma, <c>;</c> or <c>=</c>
+    /// as a separator, NaN and Infinity, a comment, <c>undefined</c>, a
+    /// constructor, a word that starts with a digit, and a value with more
+    /// after it). Newtonsoft reads most of the latter leniently.
+    /// </summary>
+    [Test]
+    public void ABodyThatIsNotStrictJsonIsAFailureWithStatus200OnEveryJsonCall()
+    {
+        var bodies = new[]
+        {
+            "hello there", "email,status\na@b.com,valid\n", "{a:1}", "{'a':'b'}", "[1,]", "{\"a\":1,}", "[1;2]",
+            "{\"a\"=1}", "{\"a\":NaN}", "-Infinity", "{\"a\":1} // c", "{\"a\":1}/*c*/", "[undefined]",
+            "{\"a\":new Date(1)}", "123abc", "{\"a\":1} {\"b\":2}", "[1] x", "{\"a\":\"\\x\"}", "{\"a\":01}",
+        };
+        foreach (var body in bodies)
+        {
+            using var server = new LoopbackServer(target => DownloadTarget(target)
+                ? Typed("text/csv", Csv)
+                : Typed("application/json", body));
+            var checkedCalls = 0;
+            Sweep(new LoopbackClient(server.Port), LoopbackWarmup(server.Port), (method, outcome, failures) =>
+            {
+                if (IsDownload(method)) return;
+                checkedCalls++;
+                if (outcome.Successes.Count != 0 || outcome.Failures.Count != 1 || outcome.LastApiError?.StatusCode != 200)
+                    failures.Add(body + " " + outcome);
+            });
+            Assert.That(checkedCalls, Is.GreaterThanOrEqualTo(80), body);
+        }
+    }
+
+    /// <summary>
+    /// The strict check the JSON calls use accepts RFC 8259 JSON, any value at
+    /// the top, and refuses everything else, including what Newtonsoft accepts
+    /// and what the sweep above cannot tell apart because Newtonsoft refuses it
+    /// too.
+    /// </summary>
+    [Test]
+    public void TheStrictJsonCheckFollowsRfc8259()
+    {
+        var valid = new[]
+        {
+            "{}", "[]", " {\"a\": [1, -0.5e+3, 2E-2, true, false, null, \"x\\u00e9\\n\\\"\\/\"]}\r\n", "0", "-1", "\"s\"",
+            "null", "{\"a\":{\"b\":[{}]}}",
+        };
+        var invalid = new[]
+        {
+            "", " ", "{", "[1", "{\"a\" 1}", "{\"a\":1,}", "[1,]", "[,1]", "{,}", "01", "1.", ".5", "1e", "1e+", "-",
+            "+1", "tru", "nul", "\"x", "\"\\x\"", "\"\\u12\"", "\"\\u12g4\"", "\"a\tb\"", "{a:1}", "{'a':1}", "NaN",
+            "[1] [2]", "1 2", "\u00a0{}",
+        };
+        foreach (var body in valid)
+            Assert.That(HttpErrors.IsStrictJson(body), Is.True, body);
+        foreach (var body in invalid)
+            Assert.That(HttpErrors.IsStrictJson(body), Is.False, body);
+    }
+
+    /// <summary>
     /// A text/html content type alone makes a 200 an error page, whatever the
     /// body: <c>{"a":1}</c> on every JSON call of both clients, Warmup's
     /// included, and a CSV-looking body on every download, Warmup's CSV
@@ -779,8 +840,10 @@ public class OfflineTransportTests
     }
 
     /// <summary>
-    /// Every HttpClient either client holds has a finite timeout, which bounds
-    /// connecting and reading alike, and a handler that follows no redirect.
+    /// Every HttpClient either client holds has the documented 120 s timeout,
+    /// which bounds connecting and reading alike, and a handler that follows no
+    /// redirect. The value is pinned exactly: HttpClient's own default (100 s)
+    /// would pass a range check, so a dropped or changed setting must fail (T2).
     /// </summary>
     [Test]
     public void EveryHttpClientHasATimeoutAndFollowsNoRedirect()
@@ -792,9 +855,7 @@ public class OfflineTransportTests
             Assert.That(clients, Is.Not.Empty, holder.GetType().Name);
             foreach (var client in clients)
             {
-                Assert.That(client.Timeout, Is.GreaterThan(TimeSpan.Zero).And.LessThanOrEqualTo(TimeSpan.FromSeconds(300)),
-                    holder.GetType().Name + " timeout");
-                Assert.That(client.Timeout, Is.Not.EqualTo(Timeout.InfiniteTimeSpan), holder.GetType().Name);
+                Assert.That(client.Timeout, Is.EqualTo(TimeSpan.FromSeconds(120)), holder.GetType().Name + " timeout");
             }
         }
         foreach (var holder in new object[] { new HandlerClientProbe(), new ZeroBounceWarmup() })
@@ -864,47 +925,69 @@ public class OfflineTransportTests
     private const string OddKey = "echo+key/12\"34%56 7=<>&'\\890é";
 
     /// <summary>
+    /// The JSON escapes a server can apply: each Newtonsoft escaping (default,
+    /// non-ASCII escaped, HTML characters escaped), each also with <c>/</c> as
+    /// <c>\/</c> (PHP's json_encode) and with upper-case <c>\u</c> digits.
+    /// </summary>
+    private static readonly List<Func<string, string>> JsonEscapes = new[]
+        {
+            StringEscapeHandling.Default, StringEscapeHandling.EscapeNonAscii, StringEscapeHandling.EscapeHtml
+        }
+        .SelectMany(handling =>
+        {
+            string Escape(string text)
+            {
+                var quoted = JsonConvert.ToString(text, '"', handling);
+                return quoted.Substring(1, quoted.Length - 2);
+            }
+            return new Func<string, string>[]
+            {
+                Escape,
+                text => Escape(text).Replace("/", "\\/"),
+                text => Regex.Replace(Escape(text), @"\\u([0-9a-f]{4})", m => "\\u" + m.Groups[1].Value.ToUpperInvariant()),
+            };
+        })
+        .ToList();
+
+    /// <summary>The URL encodings: none, a space as <c>%20</c> and as <c>+</c> (a form).</summary>
+    private static readonly List<Func<string, string>> UrlEncodings = new List<Func<string, string>>
+    {
+        text => text,
+        Uri.EscapeDataString,
+        WebUtility.UrlEncode,
+    };
+
+    /// <summary>
     /// Every spelling a server can quote a secret back in, each of which the
-    /// SDK must redact: as written; JSON-escaped as Newtonsoft writes it by
-    /// default, with non-ASCII escaped and with HTML characters escaped, each
-    /// also with <c>/</c> as <c>\/</c> (PHP's json_encode) and with upper-case
-    /// <c>\u</c> digits; and each of those URL-encoded with a space as
-    /// <c>%20</c> and as <c>+</c> (a query string, a form, or a server that
-    /// echoes a URL-encoded JSON body). Built here independently of the SDK.
+    /// SDK must redact, composed from the encoders up to two deep: {as written,
+    /// each JSON escape} x {each URL encoding}, and each JSON escape applied to
+    /// each JSON-escaped spelling (a JSON error quoted inside another JSON
+    /// string). Built here independently of the SDK; duplicates are dropped and
+    /// <see cref="EverySpellingOfTheTestSecretsIsDistinct"/> pins how many remain.
     /// </summary>
     private static List<string> Spellings(string secret)
     {
-        var bases = new List<string> { secret };
-        foreach (var handling in new[] { StringEscapeHandling.Default, StringEscapeHandling.EscapeNonAscii, StringEscapeHandling.EscapeHtml })
-        {
-            var quoted = JsonConvert.ToString(secret, '"', handling);
-            var inner = quoted.Substring(1, quoted.Length - 2);
-            bases.Add(inner);
-            bases.Add(inner.Replace("/", "\\/"));
-            bases.Add(Regex.Replace(inner, @"\\u([0-9a-f]{4})", m => "\\u" + m.Groups[1].Value.ToUpperInvariant()));
-        }
-        var spellings = new List<string>();
-        foreach (var spelling in bases.Distinct())
-        {
-            spellings.Add(spelling);
-            spellings.Add(Uri.EscapeDataString(spelling));
-            spellings.Add(WebUtility.UrlEncode(spelling));
-        }
-        return spellings;
+        var once = new List<string> { secret };
+        once.AddRange(JsonEscapes.Select(escape => escape(secret)));
+        var spellings = once.SelectMany(form => UrlEncodings.Select(encode => encode(form))).ToList();
+        spellings.AddRange(once.Skip(1).SelectMany(form => JsonEscapes.Select(escape => escape(form))));
+        return spellings.Distinct().ToList();
     }
 
     /// <summary>
-    /// The test secrets have 27 different spellings each (the default JSON
-    /// escaping has no <c>\u</c> to upper-case), so a test that finds each one
-    /// redacted needs every spelling the SDK produces.
+    /// How many different spellings each test secret has, so a test that finds
+    /// each one redacted needs every encoder the SDK composes them from.
     /// </summary>
     [Test]
     public void EverySpellingOfTheTestSecretsIsDistinct()
     {
         foreach (var secret in new[] { OddKey, SmtpPassword })
         {
+            // 9 single spellings (the default escaping has no \u to upper-case)
+            // x 3 URL encodings = 27, and 46 distinct double escapes of the 8
+            // JSON-escaped ones.
             var spellings = Spellings(secret);
-            Assert.That(spellings.Distinct().Count(), Is.EqualTo(27), string.Join(" | ", spellings));
+            Assert.That(spellings.Count, Is.EqualTo(27 + 46), string.Join(" | ", spellings));
         }
     }
 

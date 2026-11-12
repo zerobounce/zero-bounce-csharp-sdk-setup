@@ -821,6 +821,13 @@ namespace ZeroBounceSDK
                     result.Status);
                 return;
             }
+            // Newtonsoft reads leniently ({a:1}, NaN, [1,]); only strict JSON is a result.
+            if (!HttpErrors.IsStrictJson(result.Body))
+            {
+                Fail(fail, Redact(HttpErrors.MessageFromBody(result.Body, result.Status), secrets),
+                    result.Status);
+                return;
+            }
             JToken payload;
             try
             {

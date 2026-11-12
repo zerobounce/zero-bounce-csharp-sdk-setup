@@ -14,16 +14,19 @@ namespace ZeroBounceSDK
     internal static class HttpErrors
     {
         /// <summary>
-        /// Every spelling of a secret a server can quote back, longest first: as
-        /// written and each JSON-escaped spelling Newtonsoft produces, also with
-        /// <c>/</c> written as <c>\/</c> (PHP's json_encode) and with upper-case
-        /// <c>\u</c> digits; and each of those URL-encoded with <c>%20</c> or
-        /// <c>+</c> for a space (a query string, a form, or a server that echoes
-        /// a URL-encoded JSON body).
+        /// Every spelling of a secret a server can quote back, longest first,
+        /// composed from the encodings it can meet up to two deep: as written
+        /// and each JSON escape (each Newtonsoft escaping, each also with
+        /// <c>/</c> written as <c>\/</c> as PHP's json_encode does, and with
+        /// upper-case <c>\u</c> digits); each of those URL-encoded with
+        /// <c>%20</c> or <c>+</c> for a space (a query string, a form, or a
+        /// server that echoes a URL-encoded JSON body); and each JSON escape of
+        /// each JSON-escaped spelling (a JSON error quoted inside another JSON
+        /// string).
         /// </summary>
         public static IEnumerable<string> SecretForms(string secret)
         {
-            var plain = new List<string> { secret };
+            var escapes = new List<Func<string, string>>();
             foreach (var handling in new[]
                      {
                          StringEscapeHandling.Default,
@@ -31,18 +34,28 @@ namespace ZeroBounceSDK
                          StringEscapeHandling.EscapeHtml
                      })
             {
-                var quoted = JsonConvert.ToString(secret, '"', handling);
-                var inner = quoted.Substring(1, quoted.Length - 2);
-                plain.Add(inner);
-                plain.Add(inner.Replace("/", "\\/"));
-                plain.Add(Regex.Replace(inner, @"\\u[0-9a-f]{4}", m => m.Value.ToUpperInvariant().Replace("\\U", "\\u")));
+                Func<string, string> escape = text =>
+                {
+                    var quoted = JsonConvert.ToString(text, '"', handling);
+                    return quoted.Substring(1, quoted.Length - 2);
+                };
+                escapes.Add(escape);
+                escapes.Add(text => escape(text).Replace("/", "\\/"));
+                escapes.Add(text => Regex.Replace(escape(text), @"\\u[0-9a-f]{4}", m => m.Value.ToUpperInvariant().Replace("\\U", "\\u")));
             }
+            var once = new List<string> { secret };
+            once.AddRange(escapes.Select(escape => escape(secret)));
             var forms = new List<string>();
-            foreach (var form in plain)
+            foreach (var form in once)
             {
                 forms.Add(form);
                 forms.Add(Uri.EscapeDataString(form));
                 forms.Add(WebUtility.UrlEncode(form));
+            }
+            foreach (var escaped in once.Skip(1))
+            {
+                foreach (var escape in escapes)
+                    forms.Add(escape(escaped));
             }
             return forms.Where(form => form.Length > 0).Distinct().OrderByDescending(form => form.Length).ToList();
         }
@@ -90,6 +103,164 @@ namespace ZeroBounceSDK
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Whether the body is one JSON value as RFC 8259 defines it. Newtonsoft
+        /// reads leniently: <c>{a:1}</c>, <c>{'a':'b'}</c>, <c>[1,]</c>,
+        /// <c>NaN</c>, comments and <c>new Date(1)</c> all parse, so a 2xx body
+        /// like that would reach the caller as a result.
+        /// </summary>
+        public static bool IsStrictJson(string body)
+        {
+            if (body == null) return false;
+            var i = 0;
+            SkipJsonSpace(body, ref i);
+            if (!StrictValue(body, ref i, 0)) return false;
+            SkipJsonSpace(body, ref i);
+            return i == body.Length;
+        }
+
+        private static void SkipJsonSpace(string s, ref int i)
+        {
+            while (i < s.Length && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r')) i++;
+        }
+
+        private static bool StrictValue(string s, ref int i, int depth)
+        {
+            if (i >= s.Length || depth > 512) return false;
+            switch (s[i])
+            {
+                case '{':
+                case '[':
+                {
+                    var close = s[i] == '{' ? '}' : ']';
+                    i++;
+                    SkipJsonSpace(s, ref i);
+                    if (i < s.Length && s[i] == close)
+                    {
+                        i++;
+                        return true;
+                    }
+                    while (true)
+                    {
+                        if (close == '}')
+                        {
+                            if (!StrictString(s, ref i)) return false;
+                            SkipJsonSpace(s, ref i);
+                            if (i >= s.Length || s[i] != ':') return false;
+                            i++;
+                            SkipJsonSpace(s, ref i);
+                        }
+                        if (!StrictValue(s, ref i, depth + 1)) return false;
+                        SkipJsonSpace(s, ref i);
+                        if (i >= s.Length) return false;
+                        if (s[i] == close)
+                        {
+                            i++;
+                            return true;
+                        }
+                        if (s[i] != ',') return false;
+                        i++;
+                        SkipJsonSpace(s, ref i);
+                    }
+                }
+                case '"':
+                    return StrictString(s, ref i);
+                case 't':
+                    return StrictLiteral(s, ref i, "true");
+                case 'f':
+                    return StrictLiteral(s, ref i, "false");
+                case 'n':
+                    return StrictLiteral(s, ref i, "null");
+                default:
+                    return StrictNumber(s, ref i);
+            }
+        }
+
+        private static bool StrictLiteral(string s, ref int i, string literal)
+        {
+            if (string.CompareOrdinal(s, i, literal, 0, literal.Length) != 0) return false;
+            i += literal.Length;
+            return true;
+        }
+
+        private static bool StrictString(string s, ref int i)
+        {
+            if (i >= s.Length || s[i] != '"') return false;
+            i++;
+            while (i < s.Length)
+            {
+                var c = s[i];
+                if (c == '"')
+                {
+                    i++;
+                    return true;
+                }
+                if (c < 0x20) return false;
+                if (c != '\\')
+                {
+                    i++;
+                    continue;
+                }
+                i++;
+                if (i >= s.Length) return false;
+                if (s[i] == 'u')
+                {
+                    if (i + 4 >= s.Length) return false;
+                    for (var k = 1; k <= 4; k++)
+                    {
+                        if (!Uri.IsHexDigit(s[i + k])) return false;
+                    }
+                    i += 5;
+                }
+                else if ("\"\\/bfnrt".IndexOf(s[i]) >= 0)
+                {
+                    i++;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+            return false;
+        }
+
+        private static bool StrictNumber(string s, ref int i)
+        {
+            if (i < s.Length && s[i] == '-') i++;
+            if (i >= s.Length) return false;
+            if (s[i] == '0')
+            {
+                i++;
+            }
+            else if (s[i] >= '1' && s[i] <= '9')
+            {
+                while (i < s.Length && s[i] >= '0' && s[i] <= '9') i++;
+            }
+            else
+            {
+                return false;
+            }
+            if (i < s.Length && s[i] == '.')
+            {
+                i++;
+                if (!StrictDigits(s, ref i)) return false;
+            }
+            if (i < s.Length && (s[i] == 'e' || s[i] == 'E'))
+            {
+                i++;
+                if (i < s.Length && (s[i] == '+' || s[i] == '-')) i++;
+                if (!StrictDigits(s, ref i)) return false;
+            }
+            return true;
+        }
+
+        private static bool StrictDigits(string s, ref int i)
+        {
+            var start = i;
+            while (i < s.Length && s[i] >= '0' && s[i] <= '9') i++;
+            return i > start;
         }
 
         public static string StripErrorPrefix(string message)
@@ -212,6 +383,8 @@ namespace ZeroBounceSDK
 
             if (trimmed[0] == '{' || trimmed[0] == '[')
             {
+                if (!IsStrictJson(trimmed))
+                    return "ZeroBounce returned a response that is not valid JSON.";
                 try
                 {
                     var token = JToken.Parse(trimmed);

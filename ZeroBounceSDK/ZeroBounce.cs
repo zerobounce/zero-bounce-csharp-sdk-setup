@@ -1107,7 +1107,9 @@ namespace ZeroBounceSDK
             // {"error": "Invalid API key"}, with no "success" field at all, is how
             // it answers an invalid or drained key; deserialized, that used to
             // reach the success callback as a zeroed response.
-            if (HttpErrors.SuccessMeansFailure(body) || HttpErrors.ErrorOnlyBody(body))
+            // A body only a lenient parser reads as JSON ({a:1}, NaN, [1,]) is
+            // not an API response; Newtonsoft would decode it as one.
+            if (HttpErrors.SuccessMeansFailure(body) || HttpErrors.ErrorOnlyBody(body) || !HttpErrors.IsStrictJson(body))
             {
                 Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
                 return null;

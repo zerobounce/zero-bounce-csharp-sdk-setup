@@ -450,11 +450,11 @@ public class Tests
             ""other_domain_formats"": [
             {
                 ""format"": ""first_last"",
-                ""confidence"": ""HIGH"",
+                ""confidence"": ""HIGH""
             },
             {
                 ""format"": ""first"",
-                ""confidence"": ""MEDIUM"",
+                ""confidence"": ""MEDIUM""
             }
             ]
         }");
