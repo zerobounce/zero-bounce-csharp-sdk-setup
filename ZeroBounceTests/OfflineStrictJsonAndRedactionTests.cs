@@ -107,6 +107,93 @@ public partial class OfflineTransportTests
         }
     }
 
+    /// <summary>
+    /// The strict check's depth limit, read without deep recursion: 500 nested
+    /// arrays are within it and 600 are past it. A stack overflow ends a .NET
+    /// process, so this bound is what keeps a missing limit from crashing the test
+    /// host: without it this test fails here, and the sweep below never sends its
+    /// 200000-deep body.
+    /// </summary>
+    [Test]
+    public void TheStrictCheckStopsAtItsDepthLimit()
+    {
+        Assert.That(HttpErrors.IsStrictJson(new string('[', 500) + new string(']', 500)), Is.True, "500 nested arrays");
+        Assert.That(HttpErrors.IsStrictJson(new string('[', 600) + new string(']', 600)), Is.False, "600 nested arrays");
+        Assert.That(HttpErrors.IsStrictJson("{\"a\":" + new string('[', 600) + new string(']', 600) + "}"), Is.False,
+            "600 nested under an object");
+    }
+
+    /// <summary>
+    /// A 2xx body nested 200000 deep is "not valid JSON", a failure with status 200,
+    /// on every JSON call of both clients, never a stack overflow (which no catch
+    /// can stop: it ends the caller's process).
+    /// </summary>
+    [Test]
+    public void ABodyNestedPastTheDepthLimitIsAFailureWithStatus200OnEveryJsonCall()
+    {
+        // Guard first, so a missing limit fails here instead of crashing the test host.
+        Assert.That(HttpErrors.IsStrictJson(new string('[', 600) + new string(']', 600)), Is.False,
+            "the depth limit is in place");
+        var deep = new string('[', 200_000) + new string(']', 200_000);
+        Assert.That(HttpErrors.IsStrictJson(deep), Is.False);
+        using var server = new LoopbackServer(target => DownloadTarget(target)
+            ? Typed("text/csv", Csv)
+            : Typed("application/json", deep));
+        Sweep(new LoopbackClient(server.Port), LoopbackWarmup(server.Port), (method, outcome, failures) =>
+        {
+            if (IsDownload(method)) return;
+            if (outcome.Successes.Count != 0 || outcome.Failures.Count != 1 || outcome.LastApiError?.StatusCode != 200
+                || outcome.Failures[0] != NotValidJson)
+                failures.Add(outcome.ToString());
+        });
+    }
+
+    /// <summary>
+    /// Wrong shape (check E7): a 2xx body that is strict JSON but not the shape a
+    /// typed call returns is a failure with status 200 on every typed call, never a
+    /// default-filled result, an empty list or a failure without a status. Typed
+    /// calls are found by reflection: every request method of <see cref="ZeroBounce"/>
+    /// that is not a download and does not hand back raw JSON (<see cref="JToken"/>).
+    /// <see cref="ZeroBounceWarmup"/> hands back any JSON value.
+    /// </summary>
+    [Test]
+    public void AWrongShapeIsAFailureWithStatus200OnEveryTypedCall()
+    {
+        var failures = new List<string>();
+        var typed = 0;
+        var csv = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-in.csv");
+        File.WriteAllText(csv, "email\na@example.com\n");
+        try
+        {
+            foreach (var body in new[] { "0", "\"x\"", "true", "null", "[]", "[{}]", "{}" })
+            {
+                using var server = new LoopbackServer(_ => Typed("application/json", body));
+                var client = new LoopbackClient(server.Port);
+                var sweep = new RequestSweep(csv);
+                foreach (var method in RequestSweep.RequestMethods(typeof(ZeroBounce)))
+                {
+                    if (IsDownload(method)) continue;
+                    var type = method.GetParameters()[^2].ParameterType.GetGenericArguments()[0];
+                    if (type == typeof(JToken)) continue;
+                    var list = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
+                    if (list ? body.StartsWith('[') : body.StartsWith('{')) continue;
+                    typed++;
+                    var outcome = sweep.Invoke(client, method);
+                    if (outcome.Out != null && File.Exists(outcome.Out)) File.Delete(outcome.Out);
+                    if (outcome.Thrown != null || outcome.Successes.Count != 0 || outcome.Failures.Count != 1
+                        || outcome.LastApiError?.StatusCode != 200)
+                        failures.Add(body + " " + outcome);
+                }
+            }
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+        Assert.That(typed, Is.GreaterThan(200), "typed calls swept");
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
     // -- redaction closed under encoding -------------------------------------------
 
     /// <summary>A key with a space, <c>" / \ + % &amp; = &lt; &gt; '</c>: every encoding changes it.</summary>
@@ -128,13 +215,13 @@ public partial class OfflineTransportTests
         _ => JsonEscape(text, handling).Replace("/", "\\/"),
     };
 
-    /// <summary>One random composition of up to three encodings, and its name.</summary>
+    /// <summary>One random composition of up to four encodings (the SDK's own request encoding plus three a server can add), and its name.</summary>
     private static (string Value, string Name) Compose(Random random, string secret)
     {
         var handlings = new[] { StringEscapeHandling.Default, StringEscapeHandling.EscapeHtml, StringEscapeHandling.EscapeNonAscii };
         var value = secret;
         var names = new List<string>();
-        var layers = 1 + random.Next(3);
+        var layers = 1 + random.Next(4);
         for (var i = 0; i < layers; i++)
         {
             var which = random.Next(4);
@@ -198,12 +285,12 @@ public partial class OfflineTransportTests
         return builder.ToString();
     }
 
-    /// <summary>The text and every view of it decoded up to three times, in any order (the test's own decoder).</summary>
+    /// <summary>The text and every view of it decoded up to four times, in any order (the test's own decoder).</summary>
     private static HashSet<string> Views(string text)
     {
         var all = new HashSet<string> { text };
         var layer = new List<string> { text };
-        for (var depth = 0; depth < 3; depth++)
+        for (var depth = 0; depth < 4; depth++)
         {
             layer = layer.SelectMany(v => new[] { PercentDecode(v, false), PercentDecode(v, true), JsonUnescape(v) })
                 .Where(all.Add).ToList();
@@ -243,6 +330,62 @@ public partial class OfflineTransportTests
             }
         }
         Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures.Take(20)));
+    }
+
+    /// <summary>Every <c>%XX</c> in <paramref name="text"/> with lower-case hex digits.</summary>
+    private static string LowerHex(string text) =>
+        System.Text.RegularExpressions.Regex.Replace(text, "%[0-9A-F]{2}", m => m.Value.ToLowerInvariant());
+
+    /// <summary>Every UTF-16 unit of <paramref name="text"/> as a JSON u-escape (backslash, u, four hex digits), lower-case hex.</summary>
+    private static string UnicodeEscaped(string text) =>
+        string.Concat(text.Select(c => "\\u" + ((int)c).ToString("x4")));
+
+    /// <summary>A secret outside the BMP, so its JSON u-escaped spelling is a surrogate pair.</summary>
+    private const string Astral = "pw😀x/\"9";
+
+    /// <summary>A secret whose only special character is a space, so its URL spelling has no <c>%</c>.</summary>
+    private const string Spaced = "sp ace7";
+
+    /// <summary>
+    /// Each decode step of the check on its own, so removing one fails here and not
+    /// only by chance in the random compositions: percent-decoding with lower-case hex
+    /// and after an invalid UTF-8 run, <c>+</c> as a space, JSON unescaping incl.
+    /// u-escapes and a surrogate pair, a view with no <c>%</c> that still needs
+    /// <c>+</c> decoded, four layers, and a NUL (raw or <c>%00</c>) before the secret,
+    /// which must not end the check.
+    /// </summary>
+    [Test]
+    public void EveryDecodeStepIsChecked()
+    {
+        string Url20(string t) => Encode(0, StringEscapeHandling.Default, t);
+        string UrlPlus(string t) => Encode(1, StringEscapeHandling.Default, t);
+        string Json(string t) => Encode(2, StringEscapeHandling.Default, t);
+        var cases = new (string Name, string Encoded)[]
+        {
+            ("lower-case hex", LowerHex(Url20(FuzzKey))),
+            ("invalid UTF-8 run first", "%FF%C3%28 " + Url20(UrlPlus(FuzzKey))),
+            ("invalid UTF-8 run, lower-case hex", "%ff%c3 " + LowerHex(UrlPlus(Url20(FuzzKey)))),
+            ("+ under u-escapes", UnicodeEscaped(UrlPlus(FuzzKey))),
+            ("u-escapes", UnicodeEscaped(FuzzKey)),
+            ("surrogate pair", UnicodeEscaped(Astral)),
+            ("surrogate pair under URL", Url20(UnicodeEscaped(Astral))),
+            ("+ without %", UnicodeEscaped(UrlPlus(Spaced))),
+            ("four layers", Url20(Json(UrlPlus(Json(Url20(FuzzKey)))))),
+            ("four layers, u-escapes inside", UrlPlus(Url20(UnicodeEscaped(Url20(FuzzKey))))),
+            ("NUL first", "a\u0000b " + LowerHex(Url20(FuzzKey))),
+            ("%00 first", "%00 " + LowerHex(Url20(Url20(FuzzKey)))),
+            ("%00 first, JSON", "%00\\u0000 " + UnicodeEscaped(FuzzKey)),
+        };
+        var secrets = new[] { FuzzKey, Astral, Spaced };
+        var failures = new List<string>();
+        foreach (var (name, encoded) in cases)
+        {
+            var body = "Bad request: " + encoded + " (quoted)";
+            Assert.That(Exposes(body, secrets), Is.True, name + ": the test's decoder finds the secret in " + body);
+            var message = HttpErrors.RedactSecrets(body, secrets);
+            if (Exposes(message, secrets)) failures.Add(name + ": " + message);
+        }
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
     }
 
     [Test]

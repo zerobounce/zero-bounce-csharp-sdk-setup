@@ -978,7 +978,13 @@ namespace ZeroBounceSDK
                     Fail(failureCallback, "ZeroBounce returned an unexpected JSON response.", status);
                     return;
                 }
-                Succeed(successCallback, response ?? new List<T>());
+                if (response == null)
+                {
+                    // JSON null is valid JSON but not a list: the wrong shape, not an empty list.
+                    Fail(failureCallback, "ZeroBounce returned an unexpected JSON response.", status);
+                    return;
+                }
+                Succeed(successCallback, response);
             }
             catch (Exception e)
             {

@@ -66,7 +66,8 @@ namespace ZeroBounceSDK
         /// <summary>
         /// Replaces every spelling of each secret in <paramref name="text"/> with ***.
         /// Then, because a server can nest those encodings in more ways than any list
-        /// of spellings holds, it decodes what is left up to three times, in any order
+        /// of spellings holds, it decodes what is left up to four times (the SDK's own
+        /// request encoding plus three layers a server can add), in any order
         /// (URL-decoding with and without <c>+</c> as a space, and JSON unescaping);
         /// when any of those views still holds a secret, the whole text is dropped for
         /// <see cref="CredentialOmitted"/>.
@@ -83,7 +84,7 @@ namespace ZeroBounceSDK
             return ExposesSecret(value, list) ? CredentialOmitted : value;
         }
 
-        /// <summary>Whether <paramref name="text"/>, or any view of it decoded up to three times, holds one of the secrets.</summary>
+        /// <summary>Whether <paramref name="text"/>, or any view of it decoded up to four times, holds one of the secrets.</summary>
         public static bool ExposesSecret(string text, IList<string> secrets)
         {
             if (secrets.Count == 0) return false;
@@ -93,7 +94,7 @@ namespace ZeroBounceSDK
             {
                 if (layer.Any(view => secrets.Any(secret => view.IndexOf(secret, StringComparison.Ordinal) >= 0)))
                     return true;
-                if (depth == 3) return false;
+                if (depth == 4) return false;
                 var next = new List<string>();
                 foreach (var view in layer)
                 {
