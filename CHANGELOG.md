@@ -7,10 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ZeroBounceWarmup.ManagedSendingOptions.TimezoneOffsetHours` (`double?`), sent as `timezone_offset`: hours from UTC, -11.0 to 14.0, whole or fractional (`5.5`). A whole number goes out as an integer (`3`). When the obsolete `TimezoneOffset` is set too, `TimezoneOffsetHours` wins. Also `EmailContentOptions.CompanyWebsite`, `CompanyDescription`, `ExampleEmail`, and `ManagedSendingOptions.WeekdaysOnly` (`bool?`) and `Timezone` (see Fixed).
+
 ### Changed
 
+- Repository only: a test sends every public request method of `ZeroBounceWarmup`, found by reflection, to a handler that answers HTTP 200 with a body Warmup must refuse and that quotes the key (text that is not JSON to the JSON calls, a JSON error to the CSV downloads, and an HTML page whose title holds the key), and fails unless each call reports one failure with status 200 that does not carry the key. The redaction of a JSON call's non-JSON 200 body had no test before. Another makes every public request method whose name mentions `InboxPlacement` answer an empty 200, 202, 204, 404 and 500, and fails unless an empty 2xx is a success on `DeleteInboxPlacementTest` only and every other case a failure with its status.
 - Repository only: tests send every public request method of `ZeroBounce` and `ZeroBounceWarmup`, found by reflection, through the SDK's own HTTP handlers to a real HTTP server on a loopback socket, and fail if a refused connection or a body cut short of its `Content-Length` does not reach the failure callback with status 0 (or a download leaves a file), if a 301, 302, 303, 307 or 308 with a `Location` is followed or not reported with its status, if a transport error carries the key, or if any request of either client goes over anything but https. Another fails if an `HttpClient` of either client has no finite timeout or a handler that follows redirects, and `SetInboxPlacementBaseUrl` is tested to refuse an http URL.
 - Repository only: a test sends every public request method of `ZeroBounce` and `ZeroBounceWarmup`, found by reflection, to a fake server whose bodies quote the key (an HTTP 200 `{"error": "Invalid API key <key>"}`, a 200 `{"success": false, "message": "... <key>"}`, a 400 text/plain quoting the request URL with its `api_key`, a 400 JSON error, a message-only 200 and a 200 JSON array) and fails if the key reaches a failure callback or `LastApiError`. Another sets each base-URL entry point (`Initialize(apiKey, baseUrl)` of both clients, `SetListEvaluatorBaseUrl`, `SetInboxPlacementBaseUrl`, found by reflection) to a URL ending in `///` and fails if any request of either client has an empty path segment such as `/v2//validate`.
+
+### Deprecated
+
+- `ZeroBounceWarmup.EmailContentOptions.Industry` (not an API field; not sent), `EmailContentOptions.Website` (use `CompanyWebsite`), `ManagedSendingOptions.DailyLimit` (the API does not apply a daily limit; not sent) and `ManagedSendingOptions.TimezoneOffset` (whole hours only; use `TimezoneOffsetHours`) are `[Obsolete]`. They still compile, with warning CS0618, and work as described under Fixed.
+
+### Fixed
+
+- `ZeroBounceWarmup.AddSendingAccount` sends the documented ZeroBounce Managed body (https://www.zerobounce.net/docs/warmup-api/adding-a-sending-account), as the Ruby, Python, C, iOS and Pascal SDKs do: `email_content` carries `company_name`, `company_website`, `company_description`, `types_of_emails` and `example_email`, and `managed_sending` carries `weekdays_only`, `timezone`, `timezone_offset` and `warmup_start_date`. In 4.0.1 `EmailContentOptions` and `ManagedSendingOptions` could not set `company_website`, `company_description`, `example_email`, `weekdays_only` or `timezone`, and sent `industry`, `website` and `daily_limit`, which the API does not read. New properties: `EmailContentOptions.CompanyWebsite`, `CompanyDescription`, `ExampleEmail`, `ManagedSendingOptions.WeekdaysOnly` (`bool?`), `Timezone` and `TimezoneOffsetHours`. A `Website` is now sent as `company_website` (unless `CompanyWebsite` is set too); `Industry` and `DailyLimit` are no longer sent. Fractional offsets (`5.5`), which 4.0.1 could not express, go in the new `TimezoneOffsetHours`; the `int?` `TimezoneOffset` still works and is sent as before. NaN, infinities and anything outside -11 to 14 reach the failure callback as "timezone_offset must be -11 to 14" before a request is sent. Code that compiled against 4.0.1 still compiles, with warning CS0618 for the obsolete properties.
 
 ## [4.0.1] - 2026-11-11
 

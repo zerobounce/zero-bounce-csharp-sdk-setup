@@ -688,6 +688,132 @@ public class OfflineTransportTests
         }
     }
 
+    /// <summary>
+    /// Warmup builds an error from an HTTP 200 body in two places: a JSON call
+    /// answered with text that is not JSON, and a CSV download answered with
+    /// JSON. A third body is an HTML page whose title quotes the key. Every
+    /// public Warmup request method, found by reflection, reports each as one
+    /// failure with status 200 that does not carry the key, raw or URL-encoded.
+    /// </summary>
+    [Test]
+    public void AWarmupErrorBuiltFromA200BodyNeverCarriesTheKey()
+    {
+        var csv = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-in.csv");
+        File.WriteAllText(csv, "email\na@example.com\n");
+        try
+        {
+            var encoded = Uri.EscapeDataString(Key);
+            foreach (var html in new[] { false, true })
+            {
+                var handler = new Warmup200Handler(html);
+                var warmup = new ZeroBounceWarmup(handler);
+                warmup.Initialize(Key);
+                var sweep = new RequestSweep(csv);
+                var failures = new List<string>();
+                var methods = RequestSweep.RequestMethods(typeof(ZeroBounceWarmup));
+                foreach (var method in methods)
+                {
+                    var outcome = sweep.Invoke(warmup, method);
+                    var text = string.Join(" ", outcome.Failures) + " " + outcome.LastApiError;
+                    if (outcome.Thrown != null || outcome.Successes.Count != 0 || outcome.Failures.Count != 1
+                        || outcome.LastApiError?.StatusCode != 200 || text.Contains(Key) || text.Contains(encoded))
+                        failures.Add((html ? "html: " : "200: ") + outcome);
+                }
+                Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+                Assert.That(handler.Calls, Is.EqualTo(methods.Count));
+            }
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
+    /// <summary>
+    /// An empty 2xx from the Inbox Placement Tester is a success with an empty
+    /// result on DELETE only (the API answers 204 No Content there), and an error
+    /// with its status on every other call; an empty non-2xx is an error with its
+    /// status everywhere. The methods are every public request method whose name
+    /// mentions InboxPlacement, found by reflection.
+    /// </summary>
+    [Test]
+    public void AnEmptyInboxPlacement2xxIsASuccessOnDeleteOnly()
+    {
+        var csv = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-in.csv");
+        File.WriteAllText(csv, "email\na@example.com\n");
+        try
+        {
+            var methods = RequestSweep.RequestMethods(typeof(ZeroBounce)).Where(m => m.Name.Contains("InboxPlacement")).ToList();
+            Assert.That(methods, Has.Count.GreaterThanOrEqualTo(8));
+            var failures = new List<string>();
+            foreach (var method in methods)
+            {
+                var delete = method.Name.StartsWith("Delete");
+                foreach (var status in new[] { 200, 202, 204, 404, 500 })
+                {
+                    var client = new HandlerClient(new EmptyHandler(status));
+                    var outcome = new RequestSweep(csv).Invoke(client, method);
+                    var label = status + " " + outcome;
+                    if (outcome.Thrown != null)
+                        failures.Add(label);
+                    else if (delete && status <= 299)
+                    {
+                        if (outcome.Successes.Count != 1 || outcome.Failures.Count != 0)
+                            failures.Add("expected an empty success: " + label);
+                    }
+                    else if (outcome.Successes.Count != 0 || outcome.Failures.Count != 1
+                        || outcome.LastApiError?.StatusCode != status)
+                        failures.Add("expected a failure with status " + status + ": " + label);
+                }
+            }
+            Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
+    /// <summary>Answers every request with an empty body and one status.</summary>
+    private sealed class EmptyHandler : HttpMessageHandler
+    {
+        private readonly int _status;
+
+        public EmptyHandler(int status) => _status = status;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage((HttpStatusCode)_status)
+            {
+                Content = new StringContent("", Encoding.UTF8, "application/json")
+            });
+    }
+
+    /// <summary>Answers every Warmup request with an HTTP 200 body that quotes the key.</summary>
+    private sealed class Warmup200Handler : HttpMessageHandler
+    {
+        private readonly bool _html;
+        public int Calls;
+
+        public Warmup200Handler(bool html) => _html = html;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref Calls);
+            var uri = request.RequestUri!;
+            var download = uri.AbsolutePath.Contains("/download");
+            var (body, media) = _html
+                ? ("<!DOCTYPE html><html><head><title>Denied " + Key + " " + Uri.EscapeDataString(Key)
+                    + "</title></head><body>" + uri + "</body></html>", "text/html")
+                : download
+                    ? ("{\"error\":\"Invalid API key " + Key + " for " + uri + "\"}", "application/json")
+                    : ("Invalid API key " + Key + " for " + uri, "text/plain");
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(body, Encoding.UTF8, media)
+            });
+        }
+    }
+
     /// <summary>Answers every request with one body that quotes the key.</summary>
     private sealed class EchoingHandler : HttpMessageHandler
     {

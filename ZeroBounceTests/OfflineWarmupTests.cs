@@ -301,7 +301,7 @@ public class OfflineWarmupTests
         (_, error) = Capture<JToken>((ok, fail) => client.AddSendingAccount("a@b.com", "zb_managed",
             new ZeroBounceWarmup.AddSendingAccountOptions
             {
-                ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { TimezoneOffset = 15 }
+                ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { TimezoneOffsetHours = 15 }
             }, ok, fail));
         Assert.That(error, Does.Contain("timezone_offset"));
 
@@ -322,7 +322,7 @@ public class OfflineWarmupTests
                 },
                 ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions
                 {
-                    TimezoneOffset = -5,
+                    TimezoneOffsetHours = -5,
                     WarmupStartDate = "2026-03-04"
                 }
             }, ok, fail));
@@ -330,6 +330,139 @@ public class OfflineWarmupTests
         Assert.That(body["onboarding_model"]!.Value<string>(), Is.EqualTo("zb_managed"));
         Assert.That(body["email_content"]!["types_of_emails"]![1]!.Value<string>(), Is.EqualTo("marketing"));
         Assert.That(body["managed_sending"]!["warmup_start_date"]!.Value<string>(), Is.EqualTo("2026-03-04"));
+    }
+
+    private static string? AddZbManaged(ZeroBounceWarmup client, ZeroBounceWarmup.AddSendingAccountOptions options)
+    {
+        var (_, error) = Capture<JToken>((ok, fail) => client.AddSendingAccount("a@b.com", "zb_managed", options, ok, fail));
+        return error;
+    }
+
+    /// <summary>
+    /// The zb_managed body has exactly the documented fields
+    /// (https://www.zerobounce.net/docs/warmup-api/adding-a-sending-account).
+    /// </summary>
+    [Test]
+    public void AddSendingAccountSendsTheDocumentedZbManagedBody()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+
+        Assert.That(AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+        {
+            EmailContent = new ZeroBounceWarmup.EmailContentOptions
+            {
+                CompanyName = "Acme",
+                CompanyWebsite = "https://acme.example",
+                CompanyDescription = "B2B email tools",
+                TypesOfEmails = new List<string> { "marketing", "newsletter" },
+                ExampleEmail = "Hi, short intro to Acme."
+            },
+            ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions
+            {
+                WeekdaysOnly = true,
+                Timezone = "Asia/Kolkata",
+                TimezoneOffsetHours = 5.5,
+                WarmupStartDate = "2026-03-04"
+            }
+        }), Is.Null);
+        Assert.That(Only(api).Body, Is.EqualTo(
+            "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"zb_managed\","
+            + "\"email_content\":{\"company_name\":\"Acme\",\"company_website\":\"https://acme.example\","
+            + "\"company_description\":\"B2B email tools\",\"types_of_emails\":[\"marketing\",\"newsletter\"],"
+            + "\"example_email\":\"Hi, short intro to Acme.\"},"
+            + "\"managed_sending\":{\"weekdays_only\":true,\"timezone\":\"Asia/Kolkata\","
+            + "\"timezone_offset\":5.5,\"warmup_start_date\":\"2026-03-04\"}}"));
+
+        Assert.That(AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+        {
+            ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { WeekdaysOnly = false }
+        }), Is.Null);
+        Assert.That(Only(api).Body, Is.EqualTo(
+            "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"zb_managed\",\"managed_sending\":{\"weekdays_only\":false}}"));
+    }
+
+    /// <summary>
+    /// Whole and fractional hours from -11 to 14 go out as numbers (a whole
+    /// number as an integer); anything else is refused.
+    /// </summary>
+    [Test]
+    public void AddSendingAccountTakesFractionalTimezoneOffsets()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+
+        foreach (var (offset, sent) in new[] { (5.5, "5.5"), (3.0, "3"), (-11.0, "-11"), (14.0, "14"), (-3.5, "-3.5"), (5.75, "5.75") })
+        {
+            Assert.That(AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+            {
+                ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { TimezoneOffsetHours = offset }
+            }), Is.Null);
+            Assert.That(Only(api).Body, Is.EqualTo(
+                "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"zb_managed\",\"managed_sending\":{\"timezone_offset\":" + sent + "}}"));
+        }
+
+        foreach (var offset in new[] { -11.5, 14.5, -12, 15, double.NaN, double.PositiveInfinity })
+        {
+            Assert.That(AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+            {
+                ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { TimezoneOffsetHours = offset }
+            }), Is.EqualTo("timezone_offset must be -11 to 14"), "offset " + offset);
+        }
+#pragma warning disable CS0618
+        Assert.That(AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+        {
+            ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { TimezoneOffset = 15 }
+        }), Is.EqualTo("timezone_offset must be -11 to 14"));
+        Assert.That(api.Count, Is.EqualTo(0), "a refused offset sends nothing");
+
+        // When both are set, TimezoneOffsetHours wins.
+        AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+        {
+            ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { TimezoneOffset = 3, TimezoneOffsetHours = 5.5 }
+        });
+#pragma warning restore CS0618
+        Assert.That(Only(api).Body, Does.Contain("\"timezone_offset\":5.5"));
+    }
+
+    /// <summary>
+    /// Callers of 4.0.1's properties still compile: Website goes out as
+    /// company_website (CompanyWebsite wins when both are set), the int
+    /// TimezoneOffset as timezone_offset, and Industry and
+    /// DailyLimit, which the API does not read, are left out.
+    /// </summary>
+    [Test]
+    public void AddSendingAccountMapsTheOldFieldsToTheDocumentedOnes()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+
+#pragma warning disable CS0618
+        Assert.That(AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+        {
+            EmailContent = new ZeroBounceWarmup.EmailContentOptions
+            {
+                Industry = "Software",
+                CompanyName = "Acme",
+                Website = "https://old.example"
+            },
+            ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions { TimezoneOffset = -5, DailyLimit = 50 }
+        }), Is.Null);
+        Assert.That(Only(api).Body, Is.EqualTo(
+            "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"zb_managed\","
+            + "\"email_content\":{\"company_name\":\"Acme\",\"company_website\":\"https://old.example\"},"
+            + "\"managed_sending\":{\"timezone_offset\":-5}}"));
+
+        AddZbManaged(client, new ZeroBounceWarmup.AddSendingAccountOptions
+        {
+            EmailContent = new ZeroBounceWarmup.EmailContentOptions
+            {
+                Website = "https://old.example",
+                CompanyWebsite = "https://new.example"
+            }
+        });
+#pragma warning restore CS0618
+        Assert.That(Only(api).Json!["email_content"]!["company_website"]!.Value<string>(), Is.EqualTo("https://new.example"));
     }
 
     [Test]
@@ -693,6 +826,7 @@ public class OfflineWarmupTests
         public string ApiKeyHeader { get; set; } = "";
         public Dictionary<string, string> Query { get; } = new(StringComparer.Ordinal);
         public JObject? Json { get; set; }
+        public string Body { get; set; } = "";
     }
 
     private sealed class FakeWarmupHandler : HttpMessageHandler
@@ -743,6 +877,7 @@ public class OfflineWarmupTests
             if (request.Content != null)
             {
                 var body = await request.Content.ReadAsStringAsync(cancellationToken);
+                recorded.Body = body;
                 if (body.TrimStart().StartsWith('{'))
                     recorded.Json = JObject.Parse(body);
             }

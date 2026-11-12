@@ -135,6 +135,13 @@ namespace ZeroBounceSDK
         /// <see cref="AddSendingAccountOptions.ManagedSending"/>; a 200 means
         /// accepted, and the mailbox is provisioned afterwards.
         /// </para>
+        /// <para>
+        /// The zb_managed body is <c>email_content</c> (<c>company_name</c>,
+        /// <c>company_website</c>, <c>company_description</c>, <c>types_of_emails</c>,
+        /// <c>example_email</c>) and <c>managed_sending</c> (<c>weekdays_only</c>,
+        /// <c>timezone</c>, <c>timezone_offset</c>, <c>warmup_start_date</c>), as documented at
+        /// https://www.zerobounce.net/docs/warmup-api/adding-a-sending-account.
+        /// </para>
         /// </summary>
         public void AddSendingAccount(string fromAddress, string onboardingModel,
             AddSendingAccountOptions options, Action<JToken> ok, Action<string> fail)
@@ -173,10 +180,11 @@ namespace ZeroBounceSDK
 
             if (set.EmailContent != null)
             {
+                var given = set.EmailContent;
                 var content = new JObject();
-                if (set.EmailContent.TypesOfEmails != null && set.EmailContent.TypesOfEmails.Count > 0)
+                if (given.TypesOfEmails != null)
                 {
-                    foreach (var kind in set.EmailContent.TypesOfEmails)
+                    foreach (var kind in given.TypesOfEmails)
                     {
                         if (Array.IndexOf(EmailTypes, kind) < 0)
                         {
@@ -184,33 +192,56 @@ namespace ZeroBounceSDK
                             return;
                         }
                     }
-                    content["types_of_emails"] = new JArray(set.EmailContent.TypesOfEmails);
                 }
-                if (set.EmailContent.Industry != null) content["industry"] = set.EmailContent.Industry;
-                if (set.EmailContent.CompanyName != null) content["company_name"] = set.EmailContent.CompanyName;
-                if (set.EmailContent.Website != null) content["website"] = set.EmailContent.Website;
+                if (given.CompanyName != null) content["company_name"] = given.CompanyName;
+#pragma warning disable CS0618 // Website and Industry are read only to keep 4.0.x callers working.
+                // Up to 4.0.1 the website was sent as "website", which the API
+                // does not read; it now goes out as company_website. Industry is
+                // not an API field and is not sent.
+                var website = given.CompanyWebsite ?? given.Website;
+#pragma warning restore CS0618
+                if (website != null) content["company_website"] = website;
+                if (given.CompanyDescription != null) content["company_description"] = given.CompanyDescription;
+                if (given.TypesOfEmails != null && given.TypesOfEmails.Count > 0)
+                    content["types_of_emails"] = new JArray(given.TypesOfEmails);
+                if (given.ExampleEmail != null) content["example_email"] = given.ExampleEmail;
                 body["email_content"] = content;
             }
             if (set.ManagedSending != null)
             {
+                var given = set.ManagedSending;
                 var sending = new JObject();
-                if (set.ManagedSending.TimezoneOffset.HasValue)
+                if (given.WeekdaysOnly.HasValue) sending["weekdays_only"] = given.WeekdaysOnly.Value;
+                if (given.Timezone != null) sending["timezone"] = given.Timezone;
+#pragma warning disable CS0618 // TimezoneOffset is read only to keep 4.0.x callers working.
+                // TimezoneOffsetHours wins when both are set.
+                double? offsetHours = given.TimezoneOffsetHours ?? given.TimezoneOffset;
+#pragma warning restore CS0618
+                if (offsetHours.HasValue)
                 {
-                    if (OutOfRange(set.ManagedSending.TimezoneOffset.Value, -11, 14, "timezone_offset", fail))
+                    var offset = offsetHours.Value;
+                    // -11 to 14 hours, whole or fractional (5.5, 3.0); NaN fails both tests.
+                    if (!(offset >= -11 && offset <= 14))
+                    {
+                        Fail(fail, "timezone_offset must be -11 to 14", 0);
                         return;
-                    sending["timezone_offset"] = set.ManagedSending.TimezoneOffset.Value;
+                    }
+                    // A whole number goes out as an integer (3, not 3.0), as 4.0.1 sent it.
+                    if (offset == Math.Floor(offset))
+                        sending["timezone_offset"] = (int)offset;
+                    else
+                        sending["timezone_offset"] = offset;
                 }
-                if (set.ManagedSending.WarmupStartDate != null)
+                if (given.WarmupStartDate != null)
                 {
-                    if (!IsoDatePattern.IsMatch(set.ManagedSending.WarmupStartDate))
+                    if (!IsoDatePattern.IsMatch(given.WarmupStartDate))
                     {
                         Fail(fail, "warmup_start_date must be YYYY-MM-DD", 0);
                         return;
                     }
-                    sending["warmup_start_date"] = set.ManagedSending.WarmupStartDate;
+                    sending["warmup_start_date"] = given.WarmupStartDate;
                 }
-                if (set.ManagedSending.DailyLimit.HasValue)
-                    sending["daily_limit"] = set.ManagedSending.DailyLimit.Value;
+                // daily_limit is not applied by the API and is not sent.
                 body["managed_sending"] = sending;
             }
 
@@ -842,23 +873,52 @@ namespace ZeroBounceSDK
 
         // -- option holders ----------------------------------------------------
 
-        /// <summary>What ZeroBounce should send on your behalf, for zb_managed onboarding.</summary>
+        /// <summary>
+        /// The company context ZeroBounce uses to write warmup content, for
+        /// zb_managed onboarding. Only the properties that are set are sent.
+        /// </summary>
         public class EmailContentOptions
         {
             /// <summary>Any of transactional, newsletter, marketing.</summary>
             public List<string> TypesOfEmails { get; set; }
+            /// <summary>Not an API field: it is not sent.</summary>
+            [Obsolete("The API does not read an industry; describe the company with CompanyDescription.")]
             public string Industry { get; set; }
             public string CompanyName { get; set; }
+            /// <summary>Sent as company_website, unless <see cref="CompanyWebsite"/> is set too.</summary>
+            [Obsolete("Use CompanyWebsite.")]
             public string Website { get; set; }
+            /// <summary>The company's website, e.g. https://example.com.</summary>
+            public string CompanyWebsite { get; set; }
+            /// <summary>What the company does, in a sentence or two.</summary>
+            public string CompanyDescription { get; set; }
+            /// <summary>A sample of the mail you send, as a model for the warmup content.</summary>
+            public string ExampleEmail { get; set; }
         }
 
-        /// <summary>When ZeroBounce should send, for zb_managed onboarding.</summary>
+        /// <summary>
+        /// When ZeroBounce should send, for zb_managed onboarding. Write-only:
+        /// the API has no endpoint to read it back. Only the properties that are
+        /// set are sent.
+        /// </summary>
         public class ManagedSendingOptions
         {
-            /// <summary>-11 to 14.</summary>
+            /// <summary>Send on Monday to Friday only.</summary>
+            public bool? WeekdaysOnly { get; set; }
+            /// <summary>An IANA time zone name, e.g. Europe/Bucharest.</summary>
+            public string Timezone { get; set; }
+            /// <summary>Whole hours from UTC, -11 to 14.</summary>
+            [Obsolete("Whole hours only; use TimezoneOffsetHours, which takes fractional offsets such as 5.5.")]
             public int? TimezoneOffset { get; set; }
+            /// <summary>
+            /// Hours from UTC, -11.0 to 14.0, whole or fractional (5.5 for India).
+            /// Sent as timezone_offset; when <see cref="TimezoneOffset"/> is set too, this one wins.
+            /// </summary>
+            public double? TimezoneOffsetHours { get; set; }
             /// <summary>YYYY-MM-DD.</summary>
             public string WarmupStartDate { get; set; }
+            /// <summary>Not sent: the API does not apply a daily limit to zb_managed accounts.</summary>
+            [Obsolete("The API does not apply a daily limit to zb_managed accounts; it is not sent.")]
             public int? DailyLimit { get; set; }
         }
 
