@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using ZeroBounceSDK;
 
@@ -21,6 +22,15 @@ namespace ZeroBounceTests;
 public class OfflineTransportTests
 {
     private const string Key = "transport-key-123";
+
+    /// <summary>
+    /// The SMTP password the sweep sends to TestSmtpConfiguration. JSON escaping
+    /// changes its quote, slash and backslash, Newtonsoft's HTML escaping its
+    /// <c>&lt; &gt; &amp; '</c>, non-ASCII escaping its <c>é</c>, and URL
+    /// encoding all of those, its <c>+ % =</c> and its space (as <c>+</c> or
+    /// <c>%20</c>), so every spelling of it in <see cref="Spellings"/> differs.
+    /// </summary>
+    private const string SmtpPassword = "smtp\"pa/ss w=<>&'\\+%é";
 
     // -- the sweep ---------------------------------------------------------------
 
@@ -43,7 +53,15 @@ public class OfflineTransportTests
             DeclareWarmup();
         }
 
-        private string Out() => LastOut = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-out.csv");
+        /// <summary>When set, each download path already holds a file with this text before the call.</summary>
+        public string? ExistingOut;
+
+        private string Out()
+        {
+            LastOut = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-out.csv");
+            if (ExistingOut != null) File.WriteAllText(LastOut, ExistingOut);
+            return LastOut;
+        }
 
         private static Stream Stream() => new MemoryStream(Encoding.UTF8.GetBytes("email\na@example.com\n"));
 
@@ -151,7 +169,7 @@ public class OfflineTransportTests
             A("DownloadStatistics(String)", () => new object?[] { from });
             A("GetFromAddressStatistics(String)", () => new object?[] { from });
             A("CheckDomainDmarc(String,String)", () => new object?[] { from, null });
-            A("TestSmtpConfiguration(String,String,String,String,Int32)", () => new object?[] { from, "smtp-user", "smtp-pass", "smtp.example.com", 587 });
+            A("TestSmtpConfiguration(String,String,String,String,Int32)", () => new object?[] { from, "smtp-user", SmtpPassword, "smtp.example.com", 587 });
         }
 
         private Dictionary<string, Func<object?[]>> ArgsFor(Type type) =>
@@ -437,13 +455,14 @@ public class OfflineTransportTests
         method.Name.Contains("GetFile") || method.Name.StartsWith("Download");
 
     /// <summary>Calls every public request method of both clients and hands each outcome to <paramref name="check"/>.</summary>
-    private static void Sweep(object client, ZeroBounceWarmup warmup, Action<MethodInfo, RequestSweep.Outcome, List<string>> check)
+    private static void Sweep(object client, ZeroBounceWarmup warmup, Action<MethodInfo, RequestSweep.Outcome, List<string>> check,
+        string? existingOut = null)
     {
         var csv = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-in.csv");
         File.WriteAllText(csv, "email\na@example.com\n");
         try
         {
-            var sweep = new RequestSweep(csv);
+            var sweep = new RequestSweep(csv) { ExistingOut = existingOut };
             var failures = new List<string>();
             var swept = 0;
             foreach (var method in RequestSweep.AllRequestMethods())
@@ -541,6 +560,126 @@ public class OfflineTransportTests
                 failures.Add(outcome.Signature + " wrote " + outcome.Out);
         });
         Assert.That(checkedDownloads, Is.GreaterThanOrEqualTo(8));
+    }
+
+    private const string Csv = "email,status\na@example.com,valid\n";
+
+    private static bool DownloadTarget(string target) =>
+        target.Contains("getfile", StringComparison.OrdinalIgnoreCase)
+        || target.Contains("download", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>A 200 with <paramref name="body"/> labelled <paramref name="contentType"/>.</summary>
+    private static byte[] Typed(string contentType, string body)
+    {
+        var bytes = Encoding.UTF8.GetBytes(body);
+        return LoopbackServer.Head(200, "Content-Type: " + contentType + "\r\nContent-Length: " + bytes.Length + "\r\n")
+            .Concat(bytes).ToArray();
+    }
+
+    /// <summary>
+    /// Answers the downloads with a CSV-looking body and the JSON calls with
+    /// <c>{"a":1}</c>, under <paramref name="contentType"/> (the JSON calls only
+    /// when <paramref name="jsonCalls"/>), and fails unless every call it checks
+    /// reports one failure with status 200 and no download writes a file. The
+    /// bodies pass every body check, so only the content-type half of a guard
+    /// refuses them.
+    /// </summary>
+    private static void ContentTypeSweep(string contentType, bool jsonCalls)
+    {
+        using var server = new LoopbackServer(target => DownloadTarget(target)
+            ? Typed(contentType, Csv)
+            : Typed(jsonCalls ? contentType : "application/json", "{\"a\":1}"));
+        var downloads = 0;
+        Sweep(new LoopbackClient(server.Port), LoopbackWarmup(server.Port), (method, outcome, failures) =>
+        {
+            if (!jsonCalls && !IsDownload(method)) return;
+            if (IsDownload(method)) downloads++;
+            if (outcome.Successes.Count != 0 || outcome.Failures.Count != 1 || outcome.LastApiError?.StatusCode != 200)
+                failures.Add(contentType + " " + outcome);
+            if (outcome.Out != null && File.Exists(outcome.Out))
+                failures.Add(outcome.Signature + " wrote " + outcome.Out);
+        });
+        Assert.That(downloads, Is.EqualTo(8), "every download, Warmup's two CSV downloads included");
+    }
+
+    /// <summary>
+    /// A text/html content type alone makes a 200 an error page, whatever the
+    /// body: <c>{"a":1}</c> on every JSON call of both clients, Warmup's
+    /// included, and a CSV-looking body on every download, Warmup's CSV
+    /// downloads included.
+    /// </summary>
+    [Test]
+    public void AnHtmlContentTypeAloneIsAFailureOnEveryPath()
+    {
+        ContentTypeSweep("text/html; charset=utf-8", jsonCalls: true);
+    }
+
+    /// <summary>
+    /// An application/json content type alone makes a download an error,
+    /// whatever the body: a CSV-looking body is refused on every download,
+    /// Warmup's CSV downloads included, and no file is written (D1).
+    /// </summary>
+    [Test]
+    public void AJsonContentTypeAloneIsAFailureOnEveryDownload()
+    {
+        ContentTypeSweep("application/json", jsonCalls: false);
+    }
+
+    /// <summary>A file stream that writes half of what it is given, then fails as a full disk would.</summary>
+    private sealed class FailingFileStream : FileStream
+    {
+        public FailingFileStream(string path) : base(path, FileMode.Create, FileAccess.Write) { }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            base.Write(buffer, offset, count / 2);
+            base.Flush();
+            throw new IOException("File too large");
+        }
+    }
+
+    /// <summary>
+    /// Every download that writes a file, whose disk write fails part-way (a
+    /// full disk, a file size limit), reports one failure and leaves the file
+    /// already at its target as it was, with no partial file next to it (D4). A
+    /// download that succeeds replaces the existing file.
+    /// </summary>
+    [Test]
+    public void EveryDownloadKeepsTheExistingFileWhenTheWriteFails()
+    {
+        using var server = new LoopbackServer(target => DownloadTarget(target)
+            ? Typed("text/csv", Csv)
+            : Typed("application/json", "{}"));
+        var original = ZeroBounce.OpenDownloadFile;
+        foreach (var failing in new[] { true, false })
+        {
+            var files = 0;
+            if (failing) ZeroBounce.OpenDownloadFile = path => new FailingFileStream(path);
+            try
+            {
+                Sweep(new LoopbackClient(server.Port), LoopbackWarmup(server.Port), (method, outcome, failures) =>
+                {
+                    if (outcome.Out == null || !IsDownload(method)) return;
+                    files++;
+                    var left = File.Exists(outcome.Out) ? File.ReadAllText(outcome.Out) : "(no file)";
+                    var ok = failing
+                        ? outcome.Successes.Count == 0 && outcome.Failures.Count == 1 && left == "OLD RESULTS"
+                        : outcome.Successes.Count == 1 && outcome.Failures.Count == 0 && left == Csv;
+                    if (!ok) failures.Add((failing ? "failing " : "") + outcome + " left " + left);
+                    foreach (var part in Directory.GetFiles(Path.GetDirectoryName(outcome.Out)!,
+                                 "." + Path.GetFileName(outcome.Out) + "*"))
+                    {
+                        failures.Add(outcome.Signature + " left " + part);
+                        File.Delete(part);
+                    }
+                }, existingOut: "OLD RESULTS");
+            }
+            finally
+            {
+                ZeroBounce.OpenDownloadFile = original;
+            }
+            Assert.That(files, Is.EqualTo(6), "every download that writes a file");
+        }
     }
 
     /// <summary>
@@ -719,40 +858,117 @@ public class OfflineTransportTests
     }
 
     /// <summary>
-    /// A key with characters that URL encoding and JSON escaping change
-    /// (<c>+</c>, <c>/</c>, <c>"</c>, <c>%</c>), quoted back by a 400 text body in
-    /// every spelling (as written, URL-encoded with <c>%2B</c> or <c>+</c>,
-    /// JSON-escaped, and with <c>/</c> as <c>\/</c>), never reaches the caller on
-    /// any path of either client (S4).
+    /// A key with characters that URL encoding and JSON escaping change: a space,
+    /// <c>" / + % &amp; = &lt; &gt; ' \</c> and a non-ASCII <c>é</c>.
+    /// </summary>
+    private const string OddKey = "echo+key/12\"34%56 7=<>&'\\890é";
+
+    /// <summary>
+    /// Every spelling a server can quote a secret back in, each of which the
+    /// SDK must redact: as written; JSON-escaped as Newtonsoft writes it by
+    /// default, with non-ASCII escaped and with HTML characters escaped, each
+    /// also with <c>/</c> as <c>\/</c> (PHP's json_encode) and with upper-case
+    /// <c>\u</c> digits; and each of those URL-encoded with a space as
+    /// <c>%20</c> and as <c>+</c> (a query string, a form, or a server that
+    /// echoes a URL-encoded JSON body). Built here independently of the SDK.
+    /// </summary>
+    private static List<string> Spellings(string secret)
+    {
+        var bases = new List<string> { secret };
+        foreach (var handling in new[] { StringEscapeHandling.Default, StringEscapeHandling.EscapeNonAscii, StringEscapeHandling.EscapeHtml })
+        {
+            var quoted = JsonConvert.ToString(secret, '"', handling);
+            var inner = quoted.Substring(1, quoted.Length - 2);
+            bases.Add(inner);
+            bases.Add(inner.Replace("/", "\\/"));
+            bases.Add(Regex.Replace(inner, @"\\u([0-9a-f]{4})", m => "\\u" + m.Groups[1].Value.ToUpperInvariant()));
+        }
+        var spellings = new List<string>();
+        foreach (var spelling in bases.Distinct())
+        {
+            spellings.Add(spelling);
+            spellings.Add(Uri.EscapeDataString(spelling));
+            spellings.Add(WebUtility.UrlEncode(spelling));
+        }
+        return spellings;
+    }
+
+    /// <summary>
+    /// The test secrets have 27 different spellings each (the default JSON
+    /// escaping has no <c>\u</c> to upper-case), so a test that finds each one
+    /// redacted needs every spelling the SDK produces.
+    /// </summary>
+    [Test]
+    public void EverySpellingOfTheTestSecretsIsDistinct()
+    {
+        foreach (var secret in new[] { OddKey, SmtpPassword })
+        {
+            var spellings = Spellings(secret);
+            Assert.That(spellings.Distinct().Count(), Is.EqualTo(27), string.Join(" | ", spellings));
+        }
+    }
+
+    /// <summary>Each spelling alone is replaced, with nothing of it left around the ***.</summary>
+    [Test]
+    public void EachSpellingOfASecretIsRedactedWhole()
+    {
+        foreach (var secret in new[] { OddKey, SmtpPassword })
+        {
+            foreach (var spelling in Spellings(secret))
+                Assert.That(HttpErrors.RedactSecrets("[" + spelling + "]", new[] { secret }), Is.EqualTo("[***]"), spelling);
+        }
+    }
+
+    /// <summary>
+    /// A 400 JSON error that quotes the key in every spelling of
+    /// <see cref="Spellings"/>, and on TestSmtpConfiguration the SMTP password
+    /// in every spelling too, never reaches the caller in any spelling on any
+    /// path of either client (S4, S7).
     /// </summary>
     [Test]
     public void AnErrorBodyQuotingEverySpellingOfTheKeyNeverCarriesIt()
     {
-        const string key = "echo+key/12\"34%567890";
-        var json = JsonConvert.ToString(key).Trim('"');
-        var spellings = new[] { key, Uri.EscapeDataString(key), WebUtility.UrlEncode(key), json, json.Replace("/", "\\/") };
-        var handler = new SpellingHandler("Bad request for " + string.Join(" ", spellings));
+        var keySpellings = Spellings(OddKey);
+        var passwordSpellings = Spellings(SmtpPassword);
+        // A JSON error field, so the whole quote reaches the message however long it is.
+        var handler = new SpellingHandler(uri => JsonConvert.SerializeObject(new
+        {
+            error = "Bad request for " + string.Join(" | ",
+                uri.AbsolutePath.Contains("test-smtp") ? passwordSpellings : keySpellings)
+        }), mediaType: "application/json");
         var client = new HandlerClient(handler);
-        client.Initialize(key);
+        client.Initialize(OddKey);
         var warmup = new ZeroBounceWarmup(handler);
-        warmup.Initialize(key);
+        warmup.Initialize(OddKey);
+        var quoted = new List<string>();
         Sweep(client, warmup, (method, outcome, failures) =>
         {
             var texts = outcome.Failures.Append(outcome.LastApiError?.ToString() ?? "").ToList();
-            if (outcome.Failures.Count != 1 || texts.Any(text => spellings.Any(text.Contains)))
+            if (outcome.Failures.Count != 1
+                || texts.Any(text => keySpellings.Concat(passwordSpellings).Any(text.Contains)))
                 failures.Add(outcome.ToString());
+            // The quote reached the message, redacted, rather than a generic text.
+            if (outcome.Failures.FirstOrDefault()?.Contains("Bad request for *** | ***") ?? false)
+                quoted.Add(outcome.Signature);
         });
         Assert.That(handler.Calls, Is.GreaterThan(0));
+        Assert.That(quoted, Has.Member("TestSmtpConfiguration(String,String,String,String,Int32)"));
+        Assert.That(quoted, Has.Count.GreaterThanOrEqualTo(26), string.Join(", ", quoted));
     }
 
     private sealed class SpellingHandler : HttpMessageHandler
     {
-        private readonly string _body;
+        private readonly Func<Uri, string> _body;
         private readonly HttpStatusCode _status;
         private readonly string _mediaType;
         public int Calls;
 
         public SpellingHandler(string body, HttpStatusCode status = HttpStatusCode.BadRequest, string mediaType = "text/plain")
+            : this(_ => body, status, mediaType)
+        {
+        }
+
+        public SpellingHandler(Func<Uri, string> body, HttpStatusCode status = HttpStatusCode.BadRequest, string mediaType = "text/plain")
         {
             _body = body;
             _status = status;
@@ -764,7 +980,7 @@ public class OfflineTransportTests
             Interlocked.Increment(ref Calls);
             return Task.FromResult(new HttpResponseMessage(_status)
             {
-                Content = new StringContent(_body, Encoding.UTF8, _mediaType)
+                Content = new StringContent(_body(request.RequestUri!), Encoding.UTF8, _mediaType)
             });
         }
     }

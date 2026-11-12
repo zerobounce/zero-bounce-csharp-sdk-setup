@@ -1115,6 +1115,49 @@ namespace ZeroBounceSDK
             return body;
         }
 
+        /// <summary>Opens the temporary file a download is written to. Tests replace it with one that fails part-way.</summary>
+        internal static Func<string, Stream> OpenDownloadFile = path => new FileStream(path, FileMode.CreateNew, FileAccess.Write);
+
+        /// <summary>
+        /// Writes a download to a temporary file in the target's directory and
+        /// renames it over the target only once every byte is written, so a
+        /// failed write (a full disk, a file size limit, a read-only directory)
+        /// leaves a file already at the target as it was and no partial file.
+        /// The exception goes on to the caller, which reports it.
+        /// </summary>
+        private static void WriteDownload(string localDownloadPath, byte[] bytes)
+        {
+            var target = Path.GetFullPath(localDownloadPath);
+            var dirPath = Path.GetDirectoryName(target);
+            if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
+            var temp = Path.Combine(dirPath ?? "", "." + Path.GetFileName(target) + "." + Guid.NewGuid().ToString("N") + ".part");
+            try
+            {
+                using (var stream = OpenDownloadFile(temp))
+                    stream.Write(bytes, 0, bytes.Length);
+                if (File.Exists(target))
+                    File.Replace(temp, target, null);
+                else
+                    File.Move(temp, target);
+            }
+            catch
+            {
+                try
+                {
+                    File.Delete(temp);
+                }
+                catch (IOException)
+                {
+                    // Nothing more can be done; the write error is what matters.
+                }
+                catch (UnauthorizedAccessException)
+                {
+                    // As above.
+                }
+                throw;
+            }
+        }
+
         private async Task DeliverDownloadedFile(HttpResponseMessage response, string localDownloadPath,
             Action<ZBGetFileResponse> successCallback, Action<string> failureCallback)
         {
@@ -1148,9 +1191,7 @@ namespace ZeroBounceSDK
                 return;
             }
 
-            var dirPath = Path.GetDirectoryName(localDownloadPath);
-            if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
-            File.WriteAllBytes(localDownloadPath, bytes);
+            WriteDownload(localDownloadPath, bytes);
             Succeed(successCallback, new ZBGetFileResponse
             {
                 Success = true,

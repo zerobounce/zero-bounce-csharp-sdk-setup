@@ -48,6 +48,11 @@
     </ItemGroup>
 
     <ItemGroup>
+      <!-- The offline tests reach the redaction helpers and the download file seam. -->
+      <InternalsVisibleTo Include="ZeroBounceTests" />
+    </ItemGroup>
+
+    <ItemGroup>
       <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
       <PackageReference Include="Microsoft.SourceLink.GitHub" Version="10.0.403" PrivateAssets="All" />
     </ItemGroup>

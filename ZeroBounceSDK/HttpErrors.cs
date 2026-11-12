@@ -15,13 +15,15 @@ namespace ZeroBounceSDK
     {
         /// <summary>
         /// Every spelling of a secret a server can quote back, longest first: as
-        /// written, URL-encoded (<c>%20</c> or <c>+</c> for a space) and each
-        /// JSON-escaped spelling Newtonsoft produces, also with <c>/</c> written
-        /// as <c>\/</c> (PHP's json_encode) and with upper-case <c>\u</c> digits.
+        /// written and each JSON-escaped spelling Newtonsoft produces, also with
+        /// <c>/</c> written as <c>\/</c> (PHP's json_encode) and with upper-case
+        /// <c>\u</c> digits; and each of those URL-encoded with <c>%20</c> or
+        /// <c>+</c> for a space (a query string, a form, or a server that echoes
+        /// a URL-encoded JSON body).
         /// </summary>
         public static IEnumerable<string> SecretForms(string secret)
         {
-            var forms = new List<string> { secret, Uri.EscapeDataString(secret), WebUtility.UrlEncode(secret) };
+            var plain = new List<string> { secret };
             foreach (var handling in new[]
                      {
                          StringEscapeHandling.Default,
@@ -31,9 +33,16 @@ namespace ZeroBounceSDK
             {
                 var quoted = JsonConvert.ToString(secret, '"', handling);
                 var inner = quoted.Substring(1, quoted.Length - 2);
-                forms.Add(inner);
-                forms.Add(inner.Replace("/", "\\/"));
-                forms.Add(Regex.Replace(inner, @"\\u[0-9a-f]{4}", m => m.Value.ToUpperInvariant().Replace("\\U", "\\u")));
+                plain.Add(inner);
+                plain.Add(inner.Replace("/", "\\/"));
+                plain.Add(Regex.Replace(inner, @"\\u[0-9a-f]{4}", m => m.Value.ToUpperInvariant().Replace("\\U", "\\u")));
+            }
+            var forms = new List<string>();
+            foreach (var form in plain)
+            {
+                forms.Add(form);
+                forms.Add(Uri.EscapeDataString(form));
+                forms.Add(WebUtility.UrlEncode(form));
             }
             return forms.Where(form => form.Length > 0).Distinct().OrderByDescending(form => form.Length).ToList();
         }

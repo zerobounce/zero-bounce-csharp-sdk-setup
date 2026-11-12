@@ -813,6 +813,14 @@ namespace ZeroBounceSDK
                 Succeed(ok, (JToken)null);
                 return;
             }
+            // A text/html content type is a proxy's or Cloudflare's page, whatever
+            // the body looks like, as it is for the CSV downloads.
+            if (HttpErrors.ContentTypeIsHtml(result.ContentType))
+            {
+                Fail(fail, Redact(HttpErrors.MessageFromBody(result.Body, result.Status), secrets),
+                    result.Status);
+                return;
+            }
             JToken payload;
             try
             {

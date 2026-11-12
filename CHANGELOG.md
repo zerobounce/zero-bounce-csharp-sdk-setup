@@ -27,10 +27,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `GetFile`, `ScoringGetFile` (both overloads each), `EmailFinderGetFile` and `DomainSearchGetFile` report an empty HTTP 200 as a failure with status 200, "Empty response from ZeroBounce (HTTP 200)", and write no file. In 4.0.1 they wrote an empty file and reported success.
 - An HTML page's title quoted in an error is cut at 200 characters without splitting a character (a surrogate pair such as an emoji).
 - Repository only: tests pin the exact JSON bodies of `TestSmtpConfiguration` and `ChangeFromAddress`.
+- `GetFile`, `ScoringGetFile` (both overloads each), `EmailFinderGetFile` and `DomainSearchGetFile` write the download to a temporary file in the target's directory and move it over the target only once every byte is written. In 4.0.1 a disk write that failed part-way (a full disk, a file size limit) left a truncated file at the target, replacing the one that was there; now the existing file is left as it was, no partial file is left behind, and the failure reaches the failure callback with status 0 as before.
+- Every `ZeroBounceWarmup` JSON call reports an HTTP 2xx with a `text/html` content type as a failure with its status, whatever the body (a proxy's `{"a":1}` under `text/html` was returned as the result in 4.0.1), as the `ZeroBounce` calls and the Warmup CSV downloads already did. An empty 2xx is still a success with `null`.
+- Repository only: tests send every public request method of both clients a `text/html` 200 with a JSON-looking body (a CSV-looking one on the downloads), and every download an `application/json` 200 with a CSV-looking body, and fail if the content-type half of either guard is removed; another makes the disk write of every download fail part-way and checks the existing file and the directory.
 
 ### Security
 
 - `ZeroBounce` redacts the API key from errors built from a response body or a transport error in every spelling: as written, URL-encoded (`%2B` or `+`) and JSON-escaped (with `/` as `\/` too), as `ZeroBounceWarmup` already did for JSON escapes. In 4.0.1 only the key as written was masked, so a key with a character that encoding changes could reach the failure callback and `LastApiError` URL-encoded or JSON-escaped. `ZeroBounceWarmup` now also masks the URL-encoded spellings of the key and the SMTP credentials.
+- The API key and the Warmup SMTP credentials are also redacted in the URL-encoded form (`+` or `%20` for a space) of each JSON-escaped spelling, as sent back by a server that echoes a URL-encoded JSON request body (above, only the key as written was matched URL-encoded). Repository only: the test secrets now hold a space, `"`, `/`, `+`, `%`, `&`, `=`, `<`, `>`, `'`, `\` and `é`, every spelling is checked to differ from the others, and a test fails if any one spelling is dropped.
 
 ## [4.0.1] - 2026-11-11
 
