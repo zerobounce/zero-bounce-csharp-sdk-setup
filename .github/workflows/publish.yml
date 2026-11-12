@@ -46,6 +46,21 @@ jobs:
             exit 1
           fi
           
+      - name: Verify manifest version matches tag
+        env:
+          TAG: ${{ github.event.inputs.tag }}
+        run: |
+          PKG_VERSION=$(grep -m1 -E '^[[:space:]]*<PackageVersion>' ZeroBounceSDK/ZeroBounceSDK.csproj | sed -E 's/.*<PackageVersion>([^<]+)<.*/\1/')
+          if [ -z "$PKG_VERSION" ]; then
+            echo "Error: could not read the version from ZeroBounceSDK/ZeroBounceSDK.csproj."
+            exit 1
+          fi
+          if [ "$PKG_VERSION" != "${TAG#v}" ]; then
+            echo "Error: ZeroBounceSDK/ZeroBounceSDK.csproj version ($PKG_VERSION) does not match tag ($TAG)."
+            exit 1
+          fi
+          echo "Publishing $TAG (ZeroBounceSDK/ZeroBounceSDK.csproj version $PKG_VERSION)"
+
       - name: Record tag commit SHA
         id: tag_sha
         env:
