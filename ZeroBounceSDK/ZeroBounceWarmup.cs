@@ -794,7 +794,8 @@ namespace ZeroBounceSDK
                     ContentType = response.Content?.Headers.ContentType?.MediaType ?? "",
                     Body = response.Content == null
                         ? ""
-                        : response.Content.ReadAsStringAsync().GetAwaiter().GetResult()
+                        : HttpErrors.BodyText(response.Content.ReadAsByteArrayAsync().GetAwaiter().GetResult(),
+                            response.Content.Headers.ContentType?.CharSet)
                 };
             }
             finally
@@ -808,7 +809,9 @@ namespace ZeroBounceSDK
         {
             var result = Send(method, path, query, body, fail, secrets);
             if (result == null) return;
-            if (result.Status == 204 || string.IsNullOrWhiteSpace(result.Body))
+            // Only a body with nothing in it is the documented empty success; a
+            // blank one (spaces, a line break) is not JSON and is refused below.
+            if (result.Status == 204 || string.IsNullOrEmpty(result.Body))
             {
                 Succeed(ok, (JToken)null);
                 return;

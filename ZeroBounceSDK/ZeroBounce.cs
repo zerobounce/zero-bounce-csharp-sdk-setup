@@ -974,7 +974,8 @@ namespace ZeroBounceSDK
                 }
                 catch (JsonException)
                 {
-                    Fail(failureCallback, "ZeroBounce returned a response that is not valid JSON.", status);
+                    // The body is strict JSON (ReadUsableBody checked), just not a list.
+                    Fail(failureCallback, "ZeroBounce returned an unexpected JSON response.", status);
                     return;
                 }
                 Succeed(successCallback, response ?? new List<T>());
@@ -1092,10 +1093,14 @@ namespace ZeroBounceSDK
         private async Task<string> ReadUsableBody(HttpResponseMessage result, Action<string> failureCallback,
             bool allowEmptyBody = false)
         {
-            var body = result.Content == null ? "" : await result.Content.ReadAsStringAsync().ConfigureAwait(false);
+            var body = result.Content == null
+                ? ""
+                : HttpErrors.BodyText(await result.Content.ReadAsByteArrayAsync().ConfigureAwait(false),
+                    result.Content.Headers.ContentType?.CharSet);
             var media = result.Content?.Headers.ContentType?.MediaType ?? "";
             var status = (int)result.StatusCode;
-            if (allowEmptyBody && status <= 299 && string.IsNullOrWhiteSpace(body))
+            // Only a body with nothing in it; a blank one is refused below.
+            if (allowEmptyBody && status <= 299 && string.IsNullOrEmpty(body))
                 return "";
             if (status > 299 || HttpErrors.ContentTypeIsHtml(media) || HttpErrors.BodyLooksLikeHtml(body) || string.IsNullOrWhiteSpace(body))
             {

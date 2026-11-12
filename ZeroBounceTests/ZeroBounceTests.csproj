@@ -21,4 +21,9 @@
     <ProjectReference Include="..\ZeroBounceSDK\ZeroBounceSDK.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- A byte-identical copy of sdk-docs/skills/zerobounce-sdk/references/strict-json-corpus.tsv. -->
+    <None Include="Fixtures\strict-json-corpus.tsv" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

@@ -60,16 +60,135 @@ namespace ZeroBounceSDK
             return forms.Where(form => form.Length > 0).Distinct().OrderByDescending(form => form.Length).ToList();
         }
 
-        /// <summary>Replaces every spelling of each secret in <paramref name="text"/> with ***.</summary>
+        /// <summary>What a message becomes when a secret is left in it in a spelling <see cref="RedactSecrets"/> cannot replace.</summary>
+        public const string CredentialOmitted = "The response body was omitted because it contained a credential.";
+
+        /// <summary>
+        /// Replaces every spelling of each secret in <paramref name="text"/> with ***.
+        /// Then, because a server can nest those encodings in more ways than any list
+        /// of spellings holds, it decodes what is left up to three times, in any order
+        /// (URL-decoding with and without <c>+</c> as a space, and JSON unescaping);
+        /// when any of those views still holds a secret, the whole text is dropped for
+        /// <see cref="CredentialOmitted"/>.
+        /// </summary>
         public static string RedactSecrets(string text, IEnumerable<string> secrets)
         {
             var value = text ?? "";
-            foreach (var secret in secrets.Where(secret => !string.IsNullOrEmpty(secret)))
+            var list = secrets.Where(secret => !string.IsNullOrEmpty(secret)).ToList();
+            foreach (var secret in list)
             {
                 foreach (var form in SecretForms(secret))
                     value = value.Replace(form, "***");
             }
-            return value;
+            return ExposesSecret(value, list) ? CredentialOmitted : value;
+        }
+
+        /// <summary>Whether <paramref name="text"/>, or any view of it decoded up to three times, holds one of the secrets.</summary>
+        public static bool ExposesSecret(string text, IList<string> secrets)
+        {
+            if (secrets.Count == 0) return false;
+            var seen = new HashSet<string>(StringComparer.Ordinal) { text };
+            var layer = new List<string> { text };
+            for (var depth = 0; ; depth++)
+            {
+                if (layer.Any(view => secrets.Any(secret => view.IndexOf(secret, StringComparison.Ordinal) >= 0)))
+                    return true;
+                if (depth == 3) return false;
+                var next = new List<string>();
+                foreach (var view in layer)
+                {
+                    foreach (var decoded in new[] { PercentDecoded(view, false), PercentDecoded(view, true), JsonUnescaped(view) })
+                    {
+                        if (seen.Add(decoded)) next.Add(decoded);
+                    }
+                }
+                layer = next;
+            }
+        }
+
+        private static int HexValue(int c)
+        {
+            if (c >= '0' && c <= '9') return c - '0';
+            if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+            if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+            return -1;
+        }
+
+        /// <summary>URL-decodes every valid <c>%XX</c>, and <c>+</c> as a space when asked; anything else is kept.</summary>
+        private static string PercentDecoded(string text, bool plusIsSpace)
+        {
+            if (text.IndexOf('%') < 0 && (!plusIsSpace || text.IndexOf('+') < 0)) return text;
+            var raw = System.Text.Encoding.UTF8.GetBytes(text);
+            var bytes = new List<byte>(raw.Length);
+            for (var i = 0; i < raw.Length; i++)
+            {
+                if (raw[i] == '%' && i + 2 < raw.Length && HexValue(raw[i + 1]) >= 0 && HexValue(raw[i + 2]) >= 0)
+                {
+                    bytes.Add((byte)(HexValue(raw[i + 1]) * 16 + HexValue(raw[i + 2])));
+                    i += 2;
+                }
+                else
+                {
+                    bytes.Add(raw[i] == '+' && plusIsSpace ? (byte)' ' : raw[i]);
+                }
+            }
+            return System.Text.Encoding.UTF8.GetString(bytes.ToArray());
+        }
+
+        /// <summary>Undoes JSON string escapes (a backslash before <c>" \ / b f n r t</c>, or <c>u</c> and four hex digits).</summary>
+        private static string JsonUnescaped(string text)
+        {
+            if (text.IndexOf('\\') < 0) return text;
+            var builder = new System.Text.StringBuilder(text.Length);
+            for (var i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                if (c != '\\' || i + 1 >= text.Length)
+                {
+                    builder.Append(c);
+                    continue;
+                }
+                var escape = text[i + 1];
+                var simple = "\"\\/bfnrt".IndexOf(escape);
+                if (simple >= 0)
+                {
+                    builder.Append("\"\\/\b\f\n\r\t"[simple]);
+                    i++;
+                }
+                else if (escape == 'u' && i + 5 < text.Length && HexValue(text[i + 2]) >= 0 && HexValue(text[i + 3]) >= 0
+                         && HexValue(text[i + 4]) >= 0 && HexValue(text[i + 5]) >= 0)
+                {
+                    builder.Append((char)Convert.ToInt32(text.Substring(i + 2, 4), 16));
+                    i += 5;
+                }
+                else
+                {
+                    builder.Append(c);
+                }
+            }
+            return builder.ToString();
+        }
+
+        /// <summary>
+        /// A response body as text, byte for byte: <c>ReadAsStringAsync</c> drops a
+        /// leading byte order mark, which would let a BOM-prefixed body pass the strict
+        /// JSON check. The charset of the content type is used when it names one.
+        /// </summary>
+        public static string BodyText(byte[] bytes, string charset)
+        {
+            var encoding = System.Text.Encoding.UTF8;
+            if (!string.IsNullOrEmpty(charset))
+            {
+                try
+                {
+                    encoding = System.Text.Encoding.GetEncoding(charset.Trim('"'));
+                }
+                catch (ArgumentException)
+                {
+                    encoding = System.Text.Encoding.UTF8;
+                }
+            }
+            return encoding.GetString(bytes ?? new byte[0]);
         }
 
         public static bool ContentTypeIsHtml(string contentType)
@@ -383,7 +502,9 @@ namespace ZeroBounceSDK
 
             if (trimmed[0] == '{' || trimmed[0] == '[')
             {
-                if (!IsStrictJson(trimmed))
+                // The body as it arrived: Trim() drops more than JSON whitespace
+                // (NBSP, U+2003, U+000B, U+001C to U+001F), which may not surround a value.
+                if (!IsStrictJson(body))
                     return "ZeroBounce returned a response that is not valid JSON.";
                 try
                 {

@@ -831,6 +831,239 @@ public class OfflineWarmupTests
         Assert.That(error, Does.Contain("not valid JSON"));
     }
 
+    // -- every request on the wire (X3) -----------------------------------------
+
+    private static Dictionary<string, string> Q(params string[] pairs)
+    {
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        for (var i = 0; i < pairs.Length; i += 2) map[pairs[i]] = pairs[i + 1];
+        return map;
+    }
+
+    /// <summary>Asserts one request's method, path, whole query and whole JSON body (null for none).</summary>
+    private static void ExpectRequest(FakeWarmupHandler api, string label, string method, string path,
+        Dictionary<string, string> query, string? body)
+    {
+        var request = Only(api);
+        Assert.That(request.Method, Is.EqualTo(method), label);
+        Assert.That(request.Path, Is.EqualTo(Root + path), label);
+        Assert.That(request.Query, Is.EquivalentTo(query), label);
+        if (body == null)
+            Assert.That(request.Body, Is.Empty, label + " sent a body");
+        else
+            Assert.That(JToken.DeepEquals(JToken.Parse(body), JToken.Parse(request.Body)), Is.True,
+                label + " sent " + request.Body);
+    }
+
+    /// <summary>
+    /// Every public Warmup request method, with every wire field it can send pinned:
+    /// method, path, the whole query and the whole JSON body. Renaming, dropping or
+    /// adding a field fails here (X3). The table is checked against the methods found
+    /// by reflection, so a new request method must be added to it.
+    /// </summary>
+    [Test]
+    public void EveryWarmupRequestSendsExactlyTheDocumentedFields()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+        const string a = "a@b.com";
+        void Ok(JToken? _) { }
+        void Text(string _) { }
+        const string custom = "{\"c_from\":\"a@b.com\",\"reply_pct\":20,\"important_pct\":30,\"click_pct\":40}";
+        var calls = new Dictionary<string, Action>
+        {
+            ["ListSendingAccounts"] = () =>
+            {
+                client.ListSendingAccounts(Ok, Fail);
+                ExpectRequest(api, "list", "GET", "/sending-accounts", Q(), null);
+            },
+            ["GetSendingAccount"] = () =>
+            {
+                client.GetSendingAccount(a, Ok, Fail);
+                ExpectRequest(api, "get", "GET", "/sending-account", Q("from_address", a), null);
+            },
+            ["AddSendingAccount"] = () =>
+            {
+                client.AddSendingAccount(a, "self_managed",
+                    new ZeroBounceWarmup.AddSendingAccountOptions { EngagementRuleId = 2 }, Ok, Fail);
+                // ignore_conflict is left out when the caller did not set it.
+                ExpectRequest(api, "self_managed", "POST", "/sending-accounts", Q(),
+                    "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"self_managed\",\"engagement_rule_id\":2}");
+                client.AddSendingAccount(a, "self_managed",
+                    new ZeroBounceWarmup.AddSendingAccountOptions { EngagementRuleId = 4, IgnoreConflict = false }, Ok, Fail);
+                ExpectRequest(api, "self_managed ignore_conflict", "POST", "/sending-accounts", Q(),
+                    "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"self_managed\",\"engagement_rule_id\":4,"
+                    + "\"ignore_conflict\":false}");
+                client.AddSendingAccount(a, "zb_managed", null, Ok, Fail);
+                ExpectRequest(api, "zb_managed bare", "POST", "/sending-accounts", Q(),
+                    "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"zb_managed\"}");
+                client.AddSendingAccount(a, "zb_managed", new ZeroBounceWarmup.AddSendingAccountOptions
+                {
+                    IgnoreConflict = true,
+                    EmailContent = new ZeroBounceWarmup.EmailContentOptions
+                    {
+                        CompanyName = "Acme",
+                        CompanyWebsite = "https://acme.example",
+                        CompanyDescription = "Tools",
+                        TypesOfEmails = new List<string> { "newsletter" },
+                        ExampleEmail = "Hi"
+                    },
+                    ManagedSending = new ZeroBounceWarmup.ManagedSendingOptions
+                    {
+                        WeekdaysOnly = false,
+                        Timezone = "Europe/Bucharest",
+                        TimezoneOffsetHours = -3.5,
+                        WarmupStartDate = "2026-12-01"
+                    }
+                }, Ok, Fail);
+                ExpectRequest(api, "zb_managed full", "POST", "/sending-accounts", Q(),
+                    "{\"from_address\":\"a@b.com\",\"onboarding_model\":\"zb_managed\",\"ignore_conflict\":true,"
+                    + "\"email_content\":{\"company_name\":\"Acme\",\"company_website\":\"https://acme.example\","
+                    + "\"company_description\":\"Tools\",\"types_of_emails\":[\"newsletter\"],\"example_email\":\"Hi\"},"
+                    + "\"managed_sending\":{\"weekdays_only\":false,\"timezone\":\"Europe/Bucharest\","
+                    + "\"timezone_offset\":-3.5,\"warmup_start_date\":\"2026-12-01\"}}");
+            },
+            ["UpdateSendingAccount"] = () =>
+            {
+                client.UpdateSendingAccount(a, 2, 3, true, Ok, Fail);
+                ExpectRequest(api, "update", "PUT", "/sending-accounts", Q(),
+                    "{\"team_id\":1,\"from_address\":\"a@b.com\",\"engagement_rule_id\":2,\"status_id\":3,\"auto_enable\":true}");
+            },
+            ["DeleteSendingAccount"] = () =>
+            {
+                client.DeleteSendingAccount(a, Ok, Fail);
+                ExpectRequest(api, "delete", "DELETE", "/sending-accounts", Q("from_address", a), null);
+            },
+            ["ChangeFromAddress"] = () =>
+            {
+                client.ChangeFromAddress("old@b.com", "new@b.com", Ok, Fail);
+                ExpectRequest(api, "change", "PUT", "/smtp-credentials", Q(),
+                    "{\"team_id\":1,\"old_from_address\":\"old@b.com\",\"new_from_address\":\"new@b.com\"}");
+            },
+            ["ListFromAddresses"] = () =>
+            {
+                client.ListFromAddresses(null, null, null, Ok, Fail);
+                ExpectRequest(api, "from bare", "GET", "/from-addresses", Q(), null);
+                client.ListFromAddresses("acme", 10, 20, Ok, Fail);
+                ExpectRequest(api, "from", "GET", "/from-addresses",
+                    Q("search_from", "acme", "offset", "10", "limit", "20"), null);
+            },
+            ["GetEngagementRules"] = () =>
+            {
+                client.GetEngagementRules(Ok, Fail);
+                ExpectRequest(api, "rules", "GET", "/engagement-rules", Q(), null);
+            },
+            ["SetEngagementRule"] = () =>
+            {
+                client.SetEngagementRule(a, 3, Ok, Fail);
+                ExpectRequest(api, "rule", "PUT", "/engagement-rule", Q("c_from", a), "{\"rule_id\":3}");
+            },
+            ["GetCustomEngagement"] = () =>
+            {
+                client.GetCustomEngagement(a, Ok, Fail);
+                ExpectRequest(api, "custom get", "GET", "/custom-engagement/a%40b.com", Q(), null);
+            },
+            ["CreateCustomEngagement"] = () =>
+            {
+                client.CreateCustomEngagement(a, 20, 30, 40, Ok, Fail);
+                ExpectRequest(api, "custom create", "POST", "/custom-engagement", Q(), custom);
+            },
+            ["UpdateCustomEngagement"] = () =>
+            {
+                client.UpdateCustomEngagement(a, 20, 30, 40, Ok, Fail);
+                ExpectRequest(api, "custom update", "PUT", "/custom-engagement", Q(), custom);
+            },
+            ["DeleteCustomEngagement"] = () =>
+            {
+                client.DeleteCustomEngagement(a, 2, Ok, Fail);
+                ExpectRequest(api, "custom delete", "DELETE", "/custom-engagement", Q(),
+                    "{\"c_from\":\"a@b.com\",\"engagement_rule_id\":2}");
+            },
+            ["GetSeeds"] = () =>
+            {
+                client.GetSeeds(Ok, Fail);
+                ExpectRequest(api, "seeds", "GET", "/seeds", Q(), null);
+            },
+            ["DownloadSeeds"] = () =>
+            {
+                api.ReplyWith(HttpStatusCode.OK, "email\na@b.com\n", "text/csv");
+                client.DownloadSeeds(Text, Fail);
+                ExpectRequest(api, "seeds csv", "GET", "/seeds/download", Q(), null);
+            },
+            ["GetSeedCount"] = () =>
+            {
+                client.GetSeedCount(Ok, Fail);
+                ExpectRequest(api, "seed count", "GET", "/seed-count", Q(), null);
+            },
+            ["GetProgressToday"] = () =>
+            {
+                client.GetProgressToday(Ok, Fail);
+                ExpectRequest(api, "progress", "GET", "/progress-today", Q(), null);
+            },
+            ["GetSentToday"] = () =>
+            {
+                client.GetSentToday(Ok, Fail);
+                ExpectRequest(api, "sent", "GET", "/sent-today", Q(), null);
+            },
+            ["GetEmailsPerDay"] = () =>
+            {
+                client.GetEmailsPerDay(Ok, Fail);
+                ExpectRequest(api, "per day", "GET", "/emails-per-day", Q(), null);
+            },
+            ["GetStatistics"] = () =>
+            {
+                client.GetStatistics(a, Ok, Fail);
+                ExpectRequest(api, "stats", "GET", "/statistics", Q("from_address", a), null);
+            },
+            ["GetStatisticsPerDay"] = () =>
+            {
+                client.GetStatisticsPerDay(a, "2026-01-02", "2026-01-09", Ok, Fail);
+                ExpectRequest(api, "stats per day", "GET", "/statistics-per-day",
+                    Q("from_address", a, "start_date", "2026-01-02", "end_date", "2026-01-09"), null);
+            },
+            ["GetStatisticsDetailed"] = () =>
+            {
+                client.GetStatisticsDetailed(a, Ok, Fail);
+                ExpectRequest(api, "stats detailed", "GET", "/statistics-detailed", Q("c_from", a), null);
+            },
+            ["DownloadStatistics"] = () =>
+            {
+                api.ReplyWith(HttpStatusCode.OK, "email\na@b.com\n", "text/csv");
+                client.DownloadStatistics(a, Text, Fail);
+                ExpectRequest(api, "stats csv", "GET", "/statistics/download", Q("c_from", a), null);
+            },
+            ["GetFromAddressStatistics"] = () =>
+            {
+                client.GetFromAddressStatistics(a, Ok, Fail);
+                ExpectRequest(api, "from stats", "GET", "/from-address-statistics", Q("from_address", a), null);
+            },
+            ["CheckDomainDmarc"] = () =>
+            {
+                client.CheckDomainDmarc(a, null, Ok, Fail);
+                ExpectRequest(api, "dmarc bare", "GET", "/check-domain-dmarc", Q("from_address", a), null);
+                client.CheckDomainDmarc(a, "s1", Ok, Fail);
+                ExpectRequest(api, "dmarc", "GET", "/check-domain-dmarc", Q("from_address", a, "dkim_selector", "s1"), null);
+            },
+            ["TestSmtpConfiguration"] = () =>
+            {
+                client.TestSmtpConfiguration(a, "bob", "pw", "smtp.example.com", 465, Ok, Fail);
+                ExpectRequest(api, "smtp", "POST", "/test-smtp-configuration", Q(),
+                    "{\"from_address\":\"a@b.com\",\"username\":\"bob\",\"password\":\"pw\",\"server\":\"smtp.example.com\",\"port\":465}");
+            }
+        };
+        foreach (var call in calls.Values) call();
+
+        var reflected = typeof(ZeroBounceWarmup)
+            .GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance
+                        | System.Reflection.BindingFlags.DeclaredOnly)
+            .Where(m => m.GetParameters().LastOrDefault()?.ParameterType == typeof(Action<string>))
+            .Select(m => m.Name)
+            .ToList();
+        Assert.That(reflected, Is.Unique, "an overload would need its own entry");
+        Assert.That(new SortedSet<string>(calls.Keys), Is.EqualTo(new SortedSet<string>(reflected)),
+            "every Warmup request method is pinned");
+    }
+
     // -- helpers -------------------------------------------------------------
 
     private static ZeroBounceWarmup Client(FakeWarmupHandler api)

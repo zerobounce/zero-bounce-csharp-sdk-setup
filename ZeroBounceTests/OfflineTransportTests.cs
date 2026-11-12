@@ -19,7 +19,7 @@ namespace ZeroBounceTests;
 /// method has no arguments in <see cref="RequestSweep"/>.
 /// </summary>
 [TestFixture]
-public class OfflineTransportTests
+public partial class OfflineTransportTests
 {
     private const string Key = "transport-key-123";
 
