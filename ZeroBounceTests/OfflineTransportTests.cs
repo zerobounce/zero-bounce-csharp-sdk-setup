@@ -657,4 +657,127 @@ public class OfflineTransportTests
         Assert.That(recorder.Take().Select(u => u.GetLeftPart(UriPartial.Path)),
             Is.EqualTo(new[] { "https://ipt.example.test/api/ipt/providers" }));
     }
+
+    /// <summary>
+    /// A response body that echoes the key never hands it to the caller: not in
+    /// the failure message and not in <c>LastApiError</c>, on any path. The
+    /// bodies are a dead-key 200, a <c>success: false</c> 200, a 400 text/plain
+    /// quoting the request URL with its <c>api_key</c>, a 400 JSON error, a
+    /// message-only 200 (how guessformat answers a dead key) and a 200 JSON
+    /// array where an object is expected. Every <see cref="ZeroBounce"/> path
+    /// reports the first four as one failure, the finder and domain search the
+    /// message-only body too, and every Warmup path the 400s.
+    /// </summary>
+    [Test]
+    public void AnErrorBodyNeverCarriesTheKey()
+    {
+        foreach (var echo in EchoingHandler.Echoes)
+        {
+            var handler = new EchoingHandler(echo);
+            var warmup = new ZeroBounceWarmup(handler);
+            warmup.Initialize(Key);
+            Sweep(new HandlerClient(handler), warmup, (method, outcome, failures) =>
+            {
+                var leaked = outcome.Failures.Any(f => f.Contains(Key))
+                    || (outcome.LastApiError?.ToString().Contains(Key) ?? false);
+                var mustFail = echo.MustFail(method);
+                if (leaked || (mustFail && outcome.Failures.Count != 1))
+                    failures.Add(echo.Name + ": " + outcome);
+            });
+            Assert.That(handler.Calls, Is.GreaterThan(0), echo.Name);
+        }
+    }
+
+    /// <summary>Answers every request with one body that quotes the key.</summary>
+    private sealed class EchoingHandler : HttpMessageHandler
+    {
+        public sealed record Echo(string Name, int Status, string MediaType, Func<Uri, string> Body,
+            Func<MethodInfo, bool> MustFail);
+
+        private static bool Sdk(MethodInfo method) => method.DeclaringType == typeof(ZeroBounce);
+
+        private static bool FinderOrDomainSearch(MethodInfo method) =>
+            Sdk(method) && (method.Name.StartsWith("FindEmailBy") || method.Name.StartsWith("FindDomainBy"));
+
+        public static readonly Echo[] Echoes =
+        {
+            new("200 dead key", 200, "application/json", _ => "{\"error\":\"Invalid API key " + Key + "\"}", Sdk),
+            new("200 success:false", 200, "application/json",
+                _ => "{\"success\":false,\"message\":\"Unknown file id for api_key " + Key + "\"}", Sdk),
+            new("400 text quoting the URL", 400, "text/plain",
+                uri => "Bad request: " + uri.AbsoluteUri
+                    + (uri.Query.Contains("api_key=" + Key) ? "" : (uri.Query.Length == 0 ? "?" : "&") + "api_key=" + Key),
+                _ => true),
+            new("400 JSON error", 400, "application/json", _ => "{\"error\":\"Invalid API key " + Key + "\"}", _ => true),
+            new("200 message only", 200, "application/json",
+                _ => "{\"Message\":\"Invalid API key " + Key + " or your account ran out of credits\"}", FinderOrDomainSearch),
+            new("200 array", 200, "application/json", _ => "[\"Invalid API key " + Key + "\"]", _ => false),
+        };
+
+        private readonly Echo _echo;
+        public int Calls;
+
+        public EchoingHandler(Echo echo) => _echo = echo;
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref Calls);
+            return Task.FromResult(new HttpResponseMessage((HttpStatusCode)_echo.Status)
+            {
+                Content = new StringContent(_echo.Body(request.RequestUri!), Encoding.UTF8, _echo.MediaType)
+            });
+        }
+    }
+
+    /// <summary>
+    /// Every public method of either client that takes a base URL (Initialize with
+    /// a base URL, each Set*BaseUrl) strips trailing slashes: given
+    /// <c>https://host/base///</c>, no request on any path has an empty path
+    /// segment such as <c>/v2//validate</c>, and some request goes to that host.
+    /// The entry points are found by reflection, so a new one cannot escape.
+    /// </summary>
+    [Test]
+    public void EveryBaseUrlEntryPointStripsTrailingSlashes()
+    {
+        var entryPoints = BaseUrlEntryPoints();
+        Assert.That(entryPoints.Select(m => m.DeclaringType!.Name + "." + m.Name), Is.SupersetOf(new[]
+        {
+            "ZeroBounce.Initialize", "ZeroBounce.SetListEvaluatorBaseUrl", "ZeroBounce.SetInboxPlacementBaseUrl",
+            "ZeroBounceWarmup.Initialize"
+        }));
+        foreach (var entry in entryPoints)
+        {
+            var name = entry.DeclaringType!.Name + "." + entry.Name;
+            var host = (entry.DeclaringType.Name + "-" + entry.Name).ToLowerInvariant() + ".example.test";
+            var recorder = new RecordingHandler();
+            var client = new HandlerClient(recorder);
+            var warmup = new ZeroBounceWarmup(recorder);
+            warmup.Initialize(Key);
+            var args = entry.GetParameters()
+                .Select(p => p.Name!.Contains("url", StringComparison.OrdinalIgnoreCase) ? "https://" + host + "/base///" : (object)Key)
+                .ToArray();
+            entry.Invoke(entry.DeclaringType == typeof(ZeroBounceWarmup) ? warmup : client, args);
+            var reached = 0;
+            Sweep(client, warmup, (_, outcome, failures) =>
+            {
+                foreach (var uri in recorder.Take())
+                {
+                    if (uri.AbsolutePath.Contains("//")) failures.Add(name + " then " + outcome.Signature + " sent " + uri);
+                    if (uri.Host == host) reached++;
+                }
+            });
+            Assert.That(reached, Is.GreaterThan(0), name + " is used by no request");
+        }
+    }
+
+    /// <summary>
+    /// Public methods of either client, other than request methods, with a
+    /// string parameter whose name says it is a URL.
+    /// </summary>
+    private static List<MethodInfo> BaseUrlEntryPoints() => new[] { typeof(ZeroBounce), typeof(ZeroBounceWarmup) }
+        .SelectMany(t => t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
+        .Where(m => m.GetParameters().LastOrDefault()?.ParameterType != typeof(Action<string>))
+        .Where(m => m.GetParameters().Any(p => p.ParameterType == typeof(string)
+            && p.Name!.Contains("url", StringComparison.OrdinalIgnoreCase)))
+        .ToList();
 }
