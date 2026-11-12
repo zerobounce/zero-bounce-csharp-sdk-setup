@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Repository only: tests send every public request method of `ZeroBounce` and `ZeroBounceWarmup`, found by reflection, through the SDK's own HTTP handlers to a real HTTP server on a loopback socket, and fail if a refused connection or a body cut short of its `Content-Length` does not reach the failure callback with status 0 (or a download leaves a file), if a 301, 302, 303, 307 or 308 with a `Location` is followed or not reported with its status, if a transport error carries the key, or if any request of either client goes over anything but https. Another fails if an `HttpClient` of either client has no finite timeout or a handler that follows redirects, and `SetInboxPlacementBaseUrl` is tested to refuse an http URL.
+
 ## [4.0.1] - 2026-11-11
 
 ### Fixed
