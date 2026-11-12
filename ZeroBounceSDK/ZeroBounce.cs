@@ -81,11 +81,15 @@ namespace ZeroBounceSDK
 
         private static string Enc(string value) => Uri.EscapeDataString(value ?? "");
 
+        /// <summary>
+        /// The key masked in every spelling a server or the network stack can
+        /// quote it in: as written, URL-encoded and JSON-escaped (S4).
+        /// </summary>
         private static string RedactApiKey(string message, string apiKey)
         {
             if (string.IsNullOrEmpty(apiKey) || string.IsNullOrEmpty(message))
                 return message;
-            return message.Replace(apiKey, "***");
+            return HttpErrors.RedactSecrets(message, new[] { apiKey });
         }
 
         private static string SafeMultipartFileName(string fileName)
@@ -1121,7 +1125,10 @@ namespace ZeroBounceSDK
             var media = response.Content?.Headers.ContentType?.MediaType ?? "";
             var status = (int)response.StatusCode;
 
-            if (status > 299 || HttpErrors.ContentTypeIsHtml(media) || HttpErrors.BodyLooksLikeHtml(body))
+            // An empty body is never the file either: it is an error with its
+            // status, and nothing is written.
+            if (status > 299 || HttpErrors.ContentTypeIsHtml(media) || HttpErrors.BodyLooksLikeHtml(body)
+                || string.IsNullOrWhiteSpace(body))
             {
                 Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
                 return;

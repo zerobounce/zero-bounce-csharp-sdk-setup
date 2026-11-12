@@ -660,31 +660,8 @@ namespace ZeroBounceSDK
                 return value;
 
             value = RedactJsonStrings(value, all);
-            foreach (var secret in all)
-            {
-                foreach (var form in SecretForms(secret))
-                    value = value.Replace(form, "***");
-            }
-            return value;
-        }
-
-        /// <summary>The secret as written, then each JSON-escaped spelling of it.</summary>
-        private static IEnumerable<string> SecretForms(string secret)
-        {
-            yield return secret;
-            foreach (var handling in new[]
-                     {
-                         StringEscapeHandling.Default,
-                         StringEscapeHandling.EscapeNonAscii,
-                         StringEscapeHandling.EscapeHtml
-                     })
-            {
-                var quoted = JsonConvert.ToString(secret, '"', handling);
-                var inner = quoted.Substring(1, quoted.Length - 2);
-                yield return inner;
-                yield return inner.Replace("/", "\\/");
-                yield return Regex.Replace(inner, @"\\u[0-9a-f]{4}", m => m.Value.ToUpperInvariant().Replace("\\U", "\\u"));
-            }
+            // Every spelling: as written, URL-encoded and JSON-escaped.
+            return HttpErrors.RedactSecrets(value, all);
         }
 
         /// <summary>

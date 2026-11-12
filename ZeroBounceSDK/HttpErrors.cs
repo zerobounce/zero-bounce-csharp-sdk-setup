@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net;
+using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -9,6 +13,43 @@ namespace ZeroBounceSDK
     /// </summary>
     internal static class HttpErrors
     {
+        /// <summary>
+        /// Every spelling of a secret a server can quote back, longest first: as
+        /// written, URL-encoded (<c>%20</c> or <c>+</c> for a space) and each
+        /// JSON-escaped spelling Newtonsoft produces, also with <c>/</c> written
+        /// as <c>\/</c> (PHP's json_encode) and with upper-case <c>\u</c> digits.
+        /// </summary>
+        public static IEnumerable<string> SecretForms(string secret)
+        {
+            var forms = new List<string> { secret, Uri.EscapeDataString(secret), WebUtility.UrlEncode(secret) };
+            foreach (var handling in new[]
+                     {
+                         StringEscapeHandling.Default,
+                         StringEscapeHandling.EscapeNonAscii,
+                         StringEscapeHandling.EscapeHtml
+                     })
+            {
+                var quoted = JsonConvert.ToString(secret, '"', handling);
+                var inner = quoted.Substring(1, quoted.Length - 2);
+                forms.Add(inner);
+                forms.Add(inner.Replace("/", "\\/"));
+                forms.Add(Regex.Replace(inner, @"\\u[0-9a-f]{4}", m => m.Value.ToUpperInvariant().Replace("\\U", "\\u")));
+            }
+            return forms.Where(form => form.Length > 0).Distinct().OrderByDescending(form => form.Length).ToList();
+        }
+
+        /// <summary>Replaces every spelling of each secret in <paramref name="text"/> with ***.</summary>
+        public static string RedactSecrets(string text, IEnumerable<string> secrets)
+        {
+            var value = text ?? "";
+            foreach (var secret in secrets.Where(secret => !string.IsNullOrEmpty(secret)))
+            {
+                foreach (var form in SecretForms(secret))
+                    value = value.Replace(form, "***");
+            }
+            return value;
+        }
+
         public static bool ContentTypeIsHtml(string contentType)
         {
             return (contentType ?? "").IndexOf("text/html", StringComparison.OrdinalIgnoreCase) >= 0;
@@ -254,7 +295,8 @@ namespace ZeroBounceSDK
                 return "";
             var title = body.Substring(openEnd + 1, close - openEnd - 1).Trim();
             if (title.Length > 200)
-                title = title.Substring(0, 200);
+                // Cut at a character boundary, never inside a surrogate pair (P3).
+                title = title.Substring(0, char.IsHighSurrogate(title[199]) ? 199 : 200);
             return title;
         }
     }

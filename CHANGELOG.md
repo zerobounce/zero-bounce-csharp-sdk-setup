@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - `ZeroBounceWarmup.AddSendingAccount` sends the documented ZeroBounce Managed body (https://www.zerobounce.net/docs/warmup-api/adding-a-sending-account), as the Ruby, Python, C, iOS and Pascal SDKs do: `email_content` carries `company_name`, `company_website`, `company_description`, `types_of_emails` and `example_email`, and `managed_sending` carries `weekdays_only`, `timezone`, `timezone_offset` and `warmup_start_date`. In 4.0.1 `EmailContentOptions` and `ManagedSendingOptions` could not set `company_website`, `company_description`, `example_email`, `weekdays_only` or `timezone`, and sent `industry`, `website` and `daily_limit`, which the API does not read. New properties: `EmailContentOptions.CompanyWebsite`, `CompanyDescription`, `ExampleEmail`, `ManagedSendingOptions.WeekdaysOnly` (`bool?`), `Timezone` and `TimezoneOffsetHours`. A `Website` is now sent as `company_website` (unless `CompanyWebsite` is set too); `Industry` and `DailyLimit` are no longer sent. Fractional offsets (`5.5`), which 4.0.1 could not express, go in the new `TimezoneOffsetHours`; the `int?` `TimezoneOffset` still works and is sent as before. NaN, infinities and anything outside -11 to 14 reach the failure callback as "timezone_offset must be -11 to 14" before a request is sent. Code that compiled against 4.0.1 still compiles, with warning CS0618 for the obsolete properties.
+- `GetFile`, `ScoringGetFile` (both overloads each), `EmailFinderGetFile` and `DomainSearchGetFile` report an empty HTTP 200 as a failure with status 200, "Empty response from ZeroBounce (HTTP 200)", and write no file. In 4.0.1 they wrote an empty file and reported success.
+- An HTML page's title quoted in an error is cut at 200 characters without splitting a character (a surrogate pair such as an emoji).
+- Repository only: tests pin the exact JSON bodies of `TestSmtpConfiguration` and `ChangeFromAddress`.
+
+### Security
+
+- `ZeroBounce` redacts the API key from errors built from a response body or a transport error in every spelling: as written, URL-encoded (`%2B` or `+`) and JSON-escaped (with `/` as `\/` too), as `ZeroBounceWarmup` already did for JSON escapes. In 4.0.1 only the key as written was masked, so a key with a character that encoding changes could reach the failure callback and `LastApiError` URL-encoded or JSON-escaped. `ZeroBounceWarmup` now also masks the URL-encoded spellings of the key and the SMTP credentials.
 
 ## [4.0.1] - 2026-11-11
 

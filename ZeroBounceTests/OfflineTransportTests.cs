@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
+using Newtonsoft.Json;
 using ZeroBounceSDK;
 
 namespace ZeroBounceTests;
@@ -514,6 +515,35 @@ public class OfflineTransportTests
     }
 
     /// <summary>
+    /// An empty 200 (text/csv, Content-Length 0) is an error with status 200 on
+    /// every download, Warmup's CSV downloads included, and writes no file (D3).
+    /// </summary>
+    [Test]
+    public void AnEmptyDownloadIsAFailureOnEveryPath()
+    {
+        using var server = new LoopbackServer(target =>
+        {
+            var download = target.Contains("getfile", StringComparison.OrdinalIgnoreCase)
+                || target.Contains("download", StringComparison.OrdinalIgnoreCase);
+            return download
+                ? LoopbackServer.Head(200, "Content-Type: text/csv\r\nContent-Length: 0\r\n")
+                : LoopbackServer.Head(200, "Content-Type: application/json\r\nContent-Length: 2\r\n")
+                    .Concat(Encoding.ASCII.GetBytes("{}")).ToArray();
+        });
+        var checkedDownloads = 0;
+        Sweep(new LoopbackClient(server.Port), LoopbackWarmup(server.Port), (method, outcome, failures) =>
+        {
+            if (!IsDownload(method)) return;
+            checkedDownloads++;
+            if (outcome.Successes.Count != 0 || outcome.Failures.Count != 1 || outcome.LastApiError?.StatusCode != 200)
+                failures.Add(outcome.ToString());
+            if (outcome.Out != null && File.Exists(outcome.Out))
+                failures.Add(outcome.Signature + " wrote " + outcome.Out);
+        });
+        Assert.That(checkedDownloads, Is.GreaterThanOrEqualTo(8));
+    }
+
+    /// <summary>
     /// Every path refuses each redirect status with a Location header: the
     /// failure callback gets the 3xx status and nothing reaches the Location.
     /// The requests go through the SDK's own handlers.
@@ -685,6 +715,80 @@ public class OfflineTransportTests
                     failures.Add(echo.Name + ": " + outcome);
             });
             Assert.That(handler.Calls, Is.GreaterThan(0), echo.Name);
+        }
+    }
+
+    /// <summary>
+    /// A key with characters that URL encoding and JSON escaping change
+    /// (<c>+</c>, <c>/</c>, <c>"</c>, <c>%</c>), quoted back by a 400 text body in
+    /// every spelling (as written, URL-encoded with <c>%2B</c> or <c>+</c>,
+    /// JSON-escaped, and with <c>/</c> as <c>\/</c>), never reaches the caller on
+    /// any path of either client (S4).
+    /// </summary>
+    [Test]
+    public void AnErrorBodyQuotingEverySpellingOfTheKeyNeverCarriesIt()
+    {
+        const string key = "echo+key/12\"34%567890";
+        var json = JsonConvert.ToString(key).Trim('"');
+        var spellings = new[] { key, Uri.EscapeDataString(key), WebUtility.UrlEncode(key), json, json.Replace("/", "\\/") };
+        var handler = new SpellingHandler("Bad request for " + string.Join(" ", spellings));
+        var client = new HandlerClient(handler);
+        client.Initialize(key);
+        var warmup = new ZeroBounceWarmup(handler);
+        warmup.Initialize(key);
+        Sweep(client, warmup, (method, outcome, failures) =>
+        {
+            var texts = outcome.Failures.Append(outcome.LastApiError?.ToString() ?? "").ToList();
+            if (outcome.Failures.Count != 1 || texts.Any(text => spellings.Any(text.Contains)))
+                failures.Add(outcome.ToString());
+        });
+        Assert.That(handler.Calls, Is.GreaterThan(0));
+    }
+
+    private sealed class SpellingHandler : HttpMessageHandler
+    {
+        private readonly string _body;
+        private readonly HttpStatusCode _status;
+        private readonly string _mediaType;
+        public int Calls;
+
+        public SpellingHandler(string body, HttpStatusCode status = HttpStatusCode.BadRequest, string mediaType = "text/plain")
+        {
+            _body = body;
+            _status = status;
+            _mediaType = mediaType;
+        }
+
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Interlocked.Increment(ref Calls);
+            return Task.FromResult(new HttpResponseMessage(_status)
+            {
+                Content = new StringContent(_body, Encoding.UTF8, _mediaType)
+            });
+        }
+    }
+
+    /// <summary>
+    /// An HTML page's title is quoted at most 200 characters long, cut at a
+    /// character boundary: an emoji (a surrogate pair) straddling the cut is
+    /// left out whole, never split (P3).
+    /// </summary>
+    [Test]
+    public void ALongHtmlTitleIsCutAtACharacterBoundary()
+    {
+        var title = new string('a', 199) + "\U0001F600" + new string('b', 10);
+        var client = new HandlerClient(new SpellingHandler(
+            "<html><head><title>" + title + "</title></head></html>", HttpStatusCode.OK, "text/html"));
+        string? error = null;
+        client.GetCredits(_ => Assert.Fail("success"), message => error = message);
+        Assert.That(error, Does.Contain(new string('a', 199)));
+        for (var i = 0; i < error!.Length; i++)
+        {
+            if (char.IsHighSurrogate(error[i]))
+                Assert.That(i + 1 < error.Length && char.IsLowSurrogate(error[i + 1]), Is.True, error);
+            else if (char.IsLowSurrogate(error[i]))
+                Assert.That(i > 0 && char.IsHighSurrogate(error[i - 1]), Is.True, error);
         }
     }
 

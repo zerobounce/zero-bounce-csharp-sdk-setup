@@ -730,6 +730,47 @@ public class OfflineWarmupTests
         Assert.That(cut, Does.Contain("***"));
     }
 
+    /// <summary>
+    /// The exact JSON bodies of TestSmtpConfiguration and ChangeFromAddress, so a
+    /// renamed or dropped wire field fails (X3).
+    /// </summary>
+    [Test]
+    public void SmtpAndFromAddressBodiesUseTheDocumentedFieldNames()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+        api.ReplyWith(HttpStatusCode.OK, "{}", "application/json");
+
+        Capture<JToken>((ok, fail) =>
+            client.TestSmtpConfiguration("a@b.com", "bob", "pw", "smtp.example.com", 587, ok, fail));
+        Assert.That(JToken.DeepEquals(Only(api).Json, JObject.Parse(
+            "{\"from_address\":\"a@b.com\",\"username\":\"bob\",\"password\":\"pw\","
+            + "\"server\":\"smtp.example.com\",\"port\":587}")), Is.True, api.ToString());
+
+        Capture<JToken>((ok, fail) => client.ChangeFromAddress("old@b.com", "new@b.com", ok, fail));
+        var changed = Only(api).Json;
+        Assert.That(JToken.DeepEquals(changed, JObject.Parse(
+            "{\"team_id\":1,\"old_from_address\":\"old@b.com\",\"new_from_address\":\"new@b.com\"}")),
+            Is.True, changed?.ToString());
+    }
+
+    /// <summary>
+    /// Text that quotes the SMTP password, or the key, as PHP's json_encode writes
+    /// it (every / as a backslash and a slash) is masked too (S7).
+    /// </summary>
+    [Test]
+    public void SecretsQuotedWithEscapedSlashesAreMasked()
+    {
+        var api = new FakeWarmupHandler();
+        var client = Client(api);
+        api.ReplyWith(HttpStatusCode.InternalServerError, "login rejected for \"pa\\/ss\\/word\"", "text/plain");
+        var (_, error) = Capture<JToken>((ok, fail) =>
+            client.TestSmtpConfiguration("a@b.com", "bob", "pa/ss/word", "smtp.example.com", 587, ok, fail));
+        Assert.That(error, Is.Not.Null);
+        Assert.That(error, Does.Not.Contain("pa\\/ss"));
+        Assert.That(error, Does.Contain("***"));
+    }
+
     [Test]
     public void AnHtmlPageWithStatus200IsNotACsvDownload()
     {
