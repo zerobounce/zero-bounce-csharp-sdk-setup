@@ -140,6 +140,8 @@ public partial class OfflineTransportTests
         string[] wrong;
         if (converter != null && converter.IsGenericType && converter.GetGenericTypeDefinition() == typeof(ZBResponse.SingleOrArrayConverter<>))
             wrong = new[] { "true", "5", "{}", "[5]", "[true]" }; // a string or a list of strings
+        else if (converter == typeof(ZBResponse.MessageTextConverter))
+            wrong = new[] { "true", "5", "{}", "[5]", "[true]", "[null]" }; // a string or a list of strings, joined
         else if (raw == typeof(string) || raw.IsEnum)
             wrong = new[] { "true", "5", "[]", "[5]", "{}" };
         else if (raw == typeof(bool))
@@ -329,6 +331,50 @@ public partial class OfflineTransportTests
                 {
                     var row = JObject.Parse("{\"address\":\"a@b.c\",\"status\":\"valid\"}");
                     row[member.Name] = JValue.CreateNull();
+                    RunFieldSweep(group, "{\"email_batch\":[" + row.ToString(Formatting.None) + "]}", ExpectSuccess, failures);
+                    bodies++;
+                }
+            }
+        }
+        Assert.That(bodies, Is.GreaterThan(100));
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// A missing optional member reads exactly like a null one (standard.md section 3):
+    /// each documented example, with one optional key removed at a time (every member
+    /// of every typed response, batch rows included), is still a success. Credits,
+    /// address and status are excluded.
+    /// </summary>
+    [Test]
+    public void AMissingOptionalMemberIsNotAFailure()
+    {
+        var documented = Documented();
+        var failures = new List<string>();
+        var bodies = 0;
+        foreach (var group in TypedMethods().GroupBy(SuccessType))
+        {
+            var type = group.Key;
+            var isList = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
+            var model = isList ? type.GetGenericArguments()[0] : type;
+            var examples = documented.TryGetValue(model, out var found) ? found : new List<string> { "{}" };
+            foreach (var example in examples)
+            foreach (var member in ModelMembers(model).Where(m => !RequiredNames.Contains(m.Name)))
+            {
+                var body = JObject.Parse(example);
+                // The greylist answer {"Message": ...} is not a result to strip down: its Message is the answer.
+                if (body.Count == 1 && body.ContainsKey("Message")) continue;
+                body.Remove(member.Name);
+                var text = isList ? "[" + body.ToString(Formatting.None) + "]" : body.ToString(Formatting.None);
+                RunFieldSweep(group, text, ExpectSuccess, failures);
+                bodies++;
+            }
+            if (model == typeof(ZBValidateBatchResponse))
+            {
+                foreach (var member in ModelMembers(typeof(ZBValidateBatchResponseRow)).Where(m => !RequiredNames.Contains(m.Name)))
+                {
+                    var row = JObject.Parse("{\"address\":\"a@b.c\",\"status\":\"valid\"}");
+                    row.Remove(member.Name);
                     RunFieldSweep(group, "{\"email_batch\":[" + row.ToString(Formatting.None) + "]}", ExpectSuccess, failures);
                     bodies++;
                 }

@@ -42,7 +42,7 @@ namespace ZeroBounceSDK
             }
         }
 
-        private static string Kind(JToken token)
+        internal static string Kind(JToken token)
         {
             if (token == null) return "no value";
             switch (token.Type)

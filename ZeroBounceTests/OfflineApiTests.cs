@@ -335,6 +335,31 @@ public partial class OfflineApiTests
     }
 
     [Test]
+    public void AFileStatusMessageListIsJoinedWithNewlines()
+    {
+        // A file-job answer may carry "message" as a list of strings; the public
+        // Message is one string, so the list is joined with "\n" (standard.md section 3).
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "message-list-key");
+
+        var (status, error) = Capture<ZBFileStatusResponse>((ok, fail) => client.FileStatus("file-1", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(status!.Message, Is.EqualTo("ok\nalso"));
+
+        (status, error) = Capture<ZBFileStatusResponse>((ok, fail) => client.ScoringFileStatus("file-2", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(status!.Message, Is.EqualTo("ok\nalso"));
+
+        (status, error) = Capture<ZBFileStatusResponse>((ok, fail) => client.EmailFinderFileStatus("fid", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(status!.Message, Is.EqualTo("ok\nalso"));
+
+        (status, error) = Capture<ZBFileStatusResponse>((ok, fail) => client.DomainSearchFileStatus("fid", ok, fail));
+        Assert.That(error, Is.Null);
+        Assert.That(status!.Message, Is.EqualTo("ok\nalso"));
+    }
+
+    [Test]
     public void GetFileWithOptionsParameterOrder()
     {
         var api = new FakeApiHandler();
@@ -2380,6 +2405,8 @@ public partial class OfflineApiTests
                 // HTTP 200 whose body is nothing but an error, and no "success" field.
                 return Text(HttpStatusCode.OK, "{\"error\":\"Invalid API key\"}", "application/json");
             }
+            if (key.StartsWith("message-list-", StringComparison.Ordinal))
+                return Text(HttpStatusCode.OK, "{\"success\":true,\"file_id\":\"f\",\"message\":[\"ok\",\"also\"]}", "application/json");
             if (key.StartsWith("message-only-", StringComparison.Ordinal))
             {
                 // LIVE: guessformat answers an invalid or drained key this way.
