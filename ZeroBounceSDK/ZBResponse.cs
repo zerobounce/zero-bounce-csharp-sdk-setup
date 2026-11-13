@@ -18,9 +18,10 @@ namespace ZeroBounceSDK
             public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
             {
                 var token = JToken.Load(reader);
+                // With the caller's serializer, so its strict converters apply (E7).
                 return token.Type == JTokenType.Array 
-                    ? token.ToObject<List<T>>() 
-                    : new List<T> { token.ToObject<T>() };
+                    ? token.ToObject<List<T>>(serializer) 
+                    : new List<T> { token.ToObject<T>(serializer) };
             }
         
             public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer)

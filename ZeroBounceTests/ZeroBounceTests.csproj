@@ -24,6 +24,7 @@
   <ItemGroup>
     <!-- A byte-identical copy of sdk-docs/skills/zerobounce-sdk/references/strict-json-corpus.tsv. -->
     <None Include="Fixtures\strict-json-corpus.tsv" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Fixtures\documented-responses.tsv" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

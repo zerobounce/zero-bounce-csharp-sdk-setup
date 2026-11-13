@@ -345,6 +345,9 @@ public partial class OfflineTransportTests
 
     /// <summary>A secret whose only special character is a space, so its URL spelling has no <c>%</c>.</summary>
     private const string Spaced = "sp ace7";
+    /// <summary>Secrets with a 2-byte and a 3-byte UTF-8 character (<see cref="Astral"/> has a 4-byte one).</summary>
+    private const string TwoByte = "pw\u00e9x7";
+    private const string ThreeByte = "pw\u20acx7";
 
     /// <summary>
     /// Each decode step of the check on its own, so removing one fails here and not
@@ -375,8 +378,14 @@ public partial class OfflineTransportTests
             ("NUL first", "a\u0000b " + LowerHex(Url20(FuzzKey))),
             ("%00 first", "%00 " + LowerHex(Url20(Url20(FuzzKey)))),
             ("%00 first, JSON", "%00\\u0000 " + UnicodeEscaped(FuzzKey)),
+            // Percent-decoding works on bytes, then reads them as UTF-8: one case per
+            // UTF-8 sequence length, so decoding each %XX as its own character fails here.
+            ("2-byte UTF-8 under %", LowerHex(Url20(TwoByte))),
+            ("3-byte UTF-8 under %", LowerHex(Url20(ThreeByte))),
+            ("4-byte UTF-8 under %", LowerHex(Url20(Astral))),
+            ("4-byte UTF-8 under two % layers", LowerHex(Url20(Url20(Astral)))),
         };
-        var secrets = new[] { FuzzKey, Astral, Spaced };
+        var secrets = new[] { FuzzKey, Astral, Spaced, TwoByte, ThreeByte };
         var failures = new List<string>();
         foreach (var (name, encoded) in cases)
         {

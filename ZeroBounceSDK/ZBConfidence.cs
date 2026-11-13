@@ -28,10 +28,9 @@ namespace ZeroBounceSDK
 
         public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
         {
-            if (reader.TokenType == JsonToken.Null || reader.Value == null)
-                return ZBConfidence.Unknown;
-
-            var value = (reader.Value as string)?.ToLowerInvariant() ?? "";
+            // null is Unknown; a number, a boolean, an array or an object is a
+            // failure with status 200 (E7), not Unknown.
+            var value = ZBStrictTypes.ReadString(reader)?.ToLowerInvariant() ?? "";
             switch (value)
             {
                 case "high": return ZBConfidence.High;

@@ -46,7 +46,9 @@ namespace ZeroBounceSDK
 
         public override object ReadJson(JsonReader reader, Type objectType,
             object existingValue, JsonSerializer serializer) {
-            var value = (string)reader.Value;
+            // A number or a boolean is a failure with status 200 (E7), not an
+            // InvalidCastException that reached the caller with status 0.
+            var value = ZBStrictTypes.ReadString(reader);
 
             switch (value)
             {

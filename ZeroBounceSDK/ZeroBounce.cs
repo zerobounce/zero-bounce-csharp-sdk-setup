@@ -970,7 +970,7 @@ namespace ZeroBounceSDK
                 List<T> response;
                 try
                 {
-                    response = JsonConvert.DeserializeObject<List<T>>(body);
+                    response = JsonConvert.DeserializeObject<List<T>>(body, ZBStrictTypes.Settings);
                 }
                 catch (JsonException)
                 {
@@ -1048,7 +1048,7 @@ namespace ZeroBounceSDK
             T response;
             try
             {
-                response = JsonConvert.DeserializeObject<T>(body);
+                response = JsonConvert.DeserializeObject<T>(body, ZBStrictTypes.Settings);
             }
             catch (ZBInvalidValueException e)
             {
@@ -1067,6 +1067,13 @@ namespace ZeroBounceSDK
             }
             if (response is ZBValidateBatchResponse batch && ReportAccountBatchError(batch, status, failureCallback))
                 return;
+            // Validate cannot answer without address and status (E7).
+            var missing = response is ZBValidateResponse ? ZBStrictTypes.MissingValidateField(body) : null;
+            if (missing != null)
+            {
+                Fail(failureCallback, missing, status);
+                return;
+            }
             Succeed(successCallback, response);
         }
 
