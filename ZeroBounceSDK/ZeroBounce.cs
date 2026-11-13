@@ -1042,7 +1042,7 @@ namespace ZeroBounceSDK
             // finder result.
             if (messageOnlyIsFailure && HttpErrors.MessageOnlyBody(body))
             {
-                Fail(failureCallback, RedactApiKey(HttpErrors.MessageFromBody(body, status), _apiKey), status);
+                Fail(failureCallback, RedactApiKey(HttpErrors.MessageOnlyText(body), _apiKey), status);
                 return;
             }
             T response;

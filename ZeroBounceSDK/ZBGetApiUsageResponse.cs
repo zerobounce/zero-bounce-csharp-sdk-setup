@@ -15,7 +15,17 @@ class CustomDateTimeConverter : IsoDateTimeConverter
     {
         if (reader.TokenType == Newtonsoft.Json.JsonToken.Null)
             return default(System.DateTime);
-        return base.ReadJson(reader, objectType, existingValue, serializer);
+        try
+        {
+            return base.ReadJson(reader, objectType, existingValue, serializer);
+        }
+        catch (FormatException)
+        {
+            // A date no format reads is an API error with status 200, not a FormatException
+            // that escapes the call with status 0 (standard.md section 3).
+            throw new ZeroBounceSDK.ZBInvalidValueException("ZeroBounce returned a value for " + ZeroBounceSDK.ZBStrictTypes.FieldName(reader.Path)
+                                              + " that is not a date.");
+        }
     }
 }
 

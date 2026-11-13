@@ -455,9 +455,9 @@ namespace ZeroBounceSDK
 
         /// <summary>
         /// Whether a JSON body carries nothing but a message: an object with no
-        /// "success" field whose keys are all error or message keys, at least one
-        /// of them a non-empty string. Only for the email finder and domain
-        /// search, whose result is never a bare message. LIVE: guessformat
+        /// "success" field whose keys are all error or message keys, whatever their
+        /// values (a string, blank, null or a list). Only for the email finder and
+        /// domain search, whose result is never a bare message. LIVE: guessformat
         /// answers an invalid or drained key with an HTTP 200 and
         /// {"Message": "Invalid API key or your account ran out of credits"}.
         /// Not for Validate: a repeated greylist_processing request answers
@@ -471,20 +471,43 @@ namespace ZeroBounceSDK
             {
                 var parsed = JObject.Parse(trimmed);
                 if (parsed.Count == 0 || parsed.ContainsKey("success")) return false;
-                var hasText = false;
                 foreach (var property in parsed.Properties())
                 {
                     if (Array.IndexOf(MessageOnlyKeys, property.Name) < 0) return false;
-                    if (property.Value.Type == JTokenType.String &&
-                        !string.IsNullOrWhiteSpace(property.Value.Value<string>()))
-                        hasText = true;
                 }
-                return hasText;
+                return true;
             }
             catch (JsonException)
             {
                 return false;
             }
+        }
+
+        /// <summary>
+        /// The text of a message-only body (see <see cref="MessageOnlyBody"/>): the first
+        /// message that has text, a list's non-blank strings joined with newlines.
+        /// </summary>
+        public static string MessageOnlyText(string body)
+        {
+            var parsed = JObject.Parse((body ?? "").Trim());
+            foreach (var property in parsed.Properties())
+            {
+                var parts = new List<string>();
+                if (property.Value.Type == JTokenType.String)
+                {
+                    parts.Add(property.Value.Value<string>() ?? "");
+                }
+                else if (property.Value is JArray items)
+                {
+                    foreach (var item in items)
+                    {
+                        if (item.Type == JTokenType.String) parts.Add(item.Value<string>() ?? "");
+                    }
+                }
+                var text = string.Join("\n", parts.Select(part => part.Trim()).Where(part => part.Length > 0));
+                if (text.Length > 0) return StripErrorPrefix(text);
+            }
+            return "ZeroBounce returned an error with no message text.";
         }
 
         public static string MessageFromBody(string body, int statusCode)

@@ -428,4 +428,168 @@ public partial class OfflineTransportTests
             RunFieldSweep(methods, "{\"" + key + "\":\"Invalid API key or your account ran out of credits\"}", ExpectFailure200, failures);
         Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
     }
+
+    /// <summary>The email finder and domain search calls: their result is never a bare message.</summary>
+    private static List<MethodInfo> FinderAndDomainSearch() =>
+        RequestSweep.RequestMethods(typeof(ZeroBounce))
+            .Where(m => m.Name.StartsWith("FindEmailBy") || m.Name.StartsWith("FindDomainBy")).ToList();
+
+    /// <summary>Answers <paramref name="body"/> with HTTP 200 and <paramref name="contentType"/> to each method.</summary>
+    private static void RunWithContentType(IEnumerable<MethodInfo> methods, string body, string contentType,
+        Action<string, RequestSweep.Outcome, List<string>> check, List<string> failures)
+    {
+        var client = new HandlerClient(new FuncHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body, Encoding.UTF8, contentType),
+        }));
+        var csv = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-in.csv");
+        File.WriteAllText(csv, "email\na@example.com\n");
+        try
+        {
+            var sweep = new RequestSweep(csv);
+            foreach (var method in methods)
+            {
+                var outcome = sweep.Invoke(client, method);
+                try
+                {
+                    if (outcome.Thrown != null) failures.Add(body + " " + outcome);
+                    else check(body, outcome, failures);
+                }
+                finally
+                {
+                    if (outcome.Out != null && File.Exists(outcome.Out)) File.Delete(outcome.Out);
+                }
+            }
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
+    /// <summary>
+    /// A message-only body is a failure with status 200 on the email finder and domain search,
+    /// whatever its message value (check E3, standard.md section 3): a non-blank string, a blank
+    /// one, null, or a list. Validate's greylist Message is a result and is not covered here.
+    /// </summary>
+    [Test]
+    public void AMessageOnlyBodyIsAFailureWithStatus200WhateverItsMessageValue()
+    {
+        var methods = FinderAndDomainSearch();
+        Assert.That(methods, Has.Count.GreaterThanOrEqualTo(4));
+        var failures = new List<string>();
+        foreach (var body in new[]
+                 {
+                     "{\"Message\":\"Invalid API key or your account ran out of credits\"}",
+                     "{\"message\":\"Not found\"}", "{\"message\":\"\"}", "{\"message\":\"   \"}",
+                     "{\"message\":null}", "{\"Message\":null}", "{\"message\":[]}", "{\"message\":[\"a\",\"b\"]}",
+                     "{\"message\":[\"\"]}", "{\"message\":[null]}", "{\"message\":5}", "{\"message\":true}",
+                     "{\"message\":null,\"error\":\"\"}", "{\"detail\":null}",
+                 })
+        {
+            RunWithContentType(methods, body, "application/json", ExpectFailure200, failures);
+        }
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>The text of a message-only failure is its first message with text; a list's strings are joined with newlines.</summary>
+    [Test]
+    public void AMessageOnlyFailureKeepsItsText()
+    {
+        var methods = FinderAndDomainSearch();
+        var failures = new List<string>();
+        var cases = new[] { ("{\"message\":[\"first\",\"second\"]}", "first\nsecond"),
+            ("{\"message\":\"\",\"error\":\"Error: Bad domain\"}", "Bad domain"),
+            ("{\"message\":[]}", "ZeroBounce returned an error with no message text.") };
+        foreach (var (body, text) in cases)
+        {
+            RunWithContentType(methods, body, "application/json", (b, outcome, list) =>
+            {
+                if (outcome.Failures.Count != 1 || outcome.Failures[0] != text) list.Add(b + " expected " + text + ": " + outcome);
+            }, failures);
+        }
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// A date no format reads (check E7 and the date closure in standard.md section 3) is a
+    /// failure with status 200 on every typed call that returns it, not a thrown exception with
+    /// status 0 (the usage dates used to throw a FormatException).
+    /// </summary>
+    [Test]
+    public void AnUnparseableDateIsAFailureWithStatus200OnEveryTypedCall()
+    {
+        var documented = Documented();
+        var failures = new List<string>();
+        var checkedDates = 0;
+        foreach (var group in TypedMethods().GroupBy(SuccessType))
+        {
+            var type = group.Key;
+            var isList = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
+            var model = isList ? type.GetGenericArguments()[0] : type;
+            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : "{}";
+            foreach (var member in ModelMembers(model).Where(m => m.Type == typeof(DateTime)))
+            {
+                var body = JObject.Parse(baseText);
+                body[member.Name] = "not a date";
+                var text = isList ? "[" + body.ToString(Formatting.None) + "]" : body.ToString(Formatting.None);
+                RunFieldSweep(group, text, ExpectFailure200, failures);
+                checkedDates++;
+            }
+        }
+        Assert.That(checkedDates, Is.GreaterThanOrEqualTo(2));
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// Each marker of the HTML sniff counts on its own (check E, standard.md section 3): a page
+    /// with only <c>&lt;html</c>, <c>&lt;head</c> or <c>&lt;body</c> (no doctype), under
+    /// application/json or text/csv, is an HTML error page with status 200 on every path, and a
+    /// download leaves no file. Removing any one marker fails this test.
+    /// </summary>
+    [Test]
+    public void EachHtmlMarkerAloneMakesAnHtmlPageOnEveryPath()
+    {
+        var methods = RequestSweep.RequestMethods(typeof(ZeroBounce)).ToList();
+        var failures = new List<string>();
+        foreach (var page in new[]
+                 {
+                     "<html lang=\"en\"><p>Blocked</p></html>",
+                     "<head><title>Blocked</title></head><p>Try later</p>",
+                     "<body><p>Blocked. Try later.</p></body>",
+                 })
+        {
+            foreach (var contentType in new[] { "application/json", "text/csv" })
+            {
+                RunWithContentType(methods, page, contentType, (body, outcome, list) =>
+                {
+                    var onlyHtml = outcome.Successes.Count == 0 && outcome.Failures.Count == 1
+                        && outcome.LastApiError?.StatusCode == 200 && outcome.Failures[0].Contains("HTML error page");
+                    if (!onlyHtml) list.Add(contentType + " " + body + " " + outcome);
+                }, failures);
+            }
+        }
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// A JSON null in a nested domain-format row is accepted (standard.md section 3): a
+    /// finder or domain-search answer whose <c>other_domain_formats</c> row has a null
+    /// <c>format</c> or <c>confidence</c> is a success.
+    /// </summary>
+    [Test]
+    public void ANullInANestedDomainFormatRowIsNotAFailure()
+    {
+        var methods = FinderAndDomainSearch();
+        var failures = new List<string>();
+        var rowMembers = ModelMembers(typeof(ZBDomainFormat)).Select(m => m.Name).ToList();
+        Assert.That(rowMembers, Does.Contain("format"));
+        foreach (var name in rowMembers)
+        {
+            var row = JObject.Parse("{\"format\":\"x\",\"confidence\":\"high\"}");
+            row[name] = JValue.CreateNull();
+            RunFieldSweep(methods, "{\"other_domain_formats\":[" + row.ToString(Formatting.None) + "]}", ExpectSuccess, failures);
+        }
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
 }

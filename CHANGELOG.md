@@ -23,6 +23,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Behaviour change:** an email-finder or domain-search answer whose only keys are message keys (`error`, `error_message`, `Error`, `message`, `Message`, `detail`) is a failure with status 200 whatever the value. Up to 4.0.1 a `null`, blank or list message (for example `{"message": []}`) came back as an empty result, because only a non-blank string counted. The text is the first message that has any (a list's strings joined with newlines). Validate's greylist `Message` is still a result.
+- **Behaviour change:** a `GetApiUsage` `start_date` or `end_date` that no date format reads (for example `"junk"`, `""` or `"13/45/2023"`) is a failure with status 200 that names the field. Up to 4.0.1 the `FormatException` escaped the call with status 0 ("String 'junk' was not recognized as a valid DateTime.").
 - **Behaviour change:** `ZBScoreEmailResponse.Score` is a whole number: a JSON integer, or a string holding one, within the `int` range. `5.0`, `1e2`, `" 9"` and `"+9"` are a failure with status 200; up to 4.0.1 they were read as whole numbers. `null` reads as `0`; up to 4.0.1 it was a failure.
 - **Behaviour change:** a `null` in an optional integer member reads as `0`, and a `null` in a date member reads as no date, instead of a failure with status 200. Up to 4.0.1 `total`, `status_*` and `sub_status_*` of `GetApiUsage`, `Size` of `ListS3Files`, `processed_at` of `Validate` and the date range of `GetApiUsage` failed on `null`.
 - Repository only: tests cover the `"success": "false"` string on every request method, a `null` in each optional member of every typed response, the zerobounce.net batch-validate and get-api-usage examples, the score rule, the return URL omission on all four uploads and that `ToString` of both clients prints no key.
@@ -43,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Repository only: a test pins the `ZeroBounceWarmup` timeout at exactly 120 s, as it already pinned the `ZeroBounce` one; it checked only that the timeout was finite and at most 300 s, so HttpClient's own 100 s default passed. A unit-test fixture with trailing commas (not JSON) is corrected.
 
 - `ListS3Files` reports a 2xx body of JSON `null` as a failure with status 200, "ZeroBounce returned an unexpected JSON response.", as it already did for any other JSON that is not a list. Up to 4.0.1 the success callback got an empty list. Repository only: a test sends `0`, `"x"`, `true`, `null`, `[]`, `[{}]` and `{}` (whichever is the wrong shape) to every typed call of `ZeroBounce`, found by reflection, and fails unless each is one failure with status 200.
+- Repository only: tests cover a message-only body with each message value on every email-finder and domain-search call, the text of that failure, every date member of every typed response read as a non-date (status 200), each HTML-sniff marker (`<html`, `<head`, `<body`) on its own on every request method with JSON and CSV content types, and a `null` in each member of the nested domain-format rows.
 
 ### Security
 
