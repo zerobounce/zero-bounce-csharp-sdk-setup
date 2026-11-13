@@ -22,7 +22,7 @@ namespace ZeroBounceSDK
         internal static readonly JsonSerializerSettings Settings = new JsonSerializerSettings
         {
             DateParseHandling = DateParseHandling.None,
-            Converters = { new StrictStringConverter() },
+            Converters = { new StrictStringConverter(), new NullAsZeroIntConverter(), new NullAsDefaultDateTimeConverter() },
         };
 
         private static readonly Regex Integer = new Regex("^-?[0-9]+$");
@@ -130,6 +130,105 @@ namespace ZeroBounceSDK
 
             public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer) =>
                 ReadString(reader);
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) =>
+                throw new NotSupportedException();
+        }
+
+        /// <summary>
+        /// An <c>int</c> member: null reads as 0, the empty value (standard.md section 3).
+        /// Any other value is read as the default reader reads it.
+        /// </summary>
+        internal sealed class NullAsZeroIntConverter : JsonConverter
+        {
+            public override bool CanConvert(Type objectType) => objectType == typeof(int);
+
+            public override bool CanWrite => false;
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                if (reader.TokenType == JsonToken.Null || reader.TokenType == JsonToken.Undefined)
+                    return 0;
+                // Read the current token without advancing the reader (a converter must leave it on the value).
+                if (reader.TokenType == JsonToken.Integer && reader.Value is long number
+                    && number >= int.MinValue && number <= int.MaxValue)
+                    return (int)number;
+                if (reader.TokenType == JsonToken.Float && reader.Value is double fraction
+                    && Math.Floor(fraction) == fraction && fraction >= int.MinValue && fraction <= int.MaxValue)
+                    return (int)fraction;
+                var text = reader.TokenType == JsonToken.String ? (string)reader.Value : null;
+                if (text != null && int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var whole))
+                    return whole;
+                var found = Kind(reader.TokenType);
+                var field = FieldName(reader.Path);
+                reader.Skip();
+                throw new ZBInvalidValueException("ZeroBounce returned " + found + " for " + field
+                                                  + ", which is not a whole number.");
+            }
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) =>
+                throw new NotSupportedException();
+        }
+
+        /// <summary>
+        /// A <see cref="DateTime"/> member: null reads as no date (<c>default</c>), the empty
+        /// value (standard.md section 3). Any other value is read as the default reader reads it.
+        /// </summary>
+        internal sealed class NullAsDefaultDateTimeConverter : JsonConverter
+        {
+            public override bool CanConvert(Type objectType) => objectType == typeof(DateTime);
+
+            public override bool CanWrite => false;
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                if (reader.TokenType == JsonToken.Null || reader.TokenType == JsonToken.Undefined)
+                    return default(DateTime);
+                if (reader.TokenType == JsonToken.Date && reader.Value is DateTime date)
+                    return date;
+                var text = reader.TokenType == JsonToken.String ? (string)reader.Value : null;
+                if (text != null && DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                    return parsed;
+                var found = Kind(reader.TokenType);
+                var field = FieldName(reader.Path);
+                reader.Skip();
+                throw new ZBInvalidValueException("ZeroBounce returned " + found + " for " + field
+                                                  + ", which is not a date.");
+            }
+
+            public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) =>
+                throw new NotSupportedException();
+        }
+
+        /// <summary>
+        /// The AI score: a whole number in the <c>int</c> range, sent as a JSON integer or a
+        /// JSON string holding one. null reads as 0. A fraction, an exponent (<c>5.0</c>,
+        /// <c>1e2</c>), a string with anything else in it (<c>" 9"</c>, <c>"+9"</c>), a value
+        /// outside the <c>int</c> range, a boolean, an array or an object is an error.
+        /// </summary>
+        internal sealed class IntegerConverter : JsonConverter
+        {
+            public override bool CanConvert(Type objectType) => objectType == typeof(int);
+
+            public override bool CanWrite => false;
+
+            public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
+            {
+                if (reader.TokenType == JsonToken.Null || reader.TokenType == JsonToken.Undefined)
+                    return 0;
+                if (reader.TokenType == JsonToken.Integer && reader.Value is long number
+                    && number >= int.MinValue && number <= int.MaxValue)
+                    return (int)number;
+                var text = reader.TokenType == JsonToken.String ? (string)reader.Value : null;
+                if (text != null && Integer.IsMatch(text)
+                    && int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var score))
+                    return score;
+                var found = Kind(reader.TokenType);
+                var field = FieldName(reader.Path);
+                reader.Skip();
+                throw new ZBInvalidValueException("ZeroBounce returned " + found + " for " + field
+                                                  + ", which is not a whole number in the int range.");
+            }
 
             public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) =>
                 throw new NotSupportedException();

@@ -8,6 +8,15 @@ class CustomDateTimeConverter : IsoDateTimeConverter
     {
         DateTimeFormat = "M/d/yyyy";
     }
+
+    /// <summary>A null date reads as no date (standard.md section 3), not as an error.</summary>
+    public override object ReadJson(Newtonsoft.Json.JsonReader reader, System.Type objectType, object existingValue,
+        Newtonsoft.Json.JsonSerializer serializer)
+    {
+        if (reader.TokenType == Newtonsoft.Json.JsonToken.Null)
+            return default(System.DateTime);
+        return base.ReadJson(reader, objectType, existingValue, serializer);
+    }
 }
 
 namespace ZeroBounceSDK

@@ -56,6 +56,9 @@ public partial class OfflineTransportTests
         return bodies;
     }
 
+    /// <summary>JSON names a call cannot answer without (null is a failure for these).</summary>
+    private static readonly HashSet<string> RequiredNames = new() { "Credits", "address", "status" };
+
     private static Type SuccessType(MethodInfo method)
     {
         var parameters = method.GetParameters();
@@ -265,6 +268,96 @@ public partial class OfflineTransportTests
     /// failure with status 200 on every typed call. A call whose result is a list
     /// accepts the empty array, and still rejects the others.
     /// </summary>
+    /// <summary>
+    /// The AI score is an integer in the API (check E7): a JSON integer, or a string
+    /// holding one, within the int range is a result; a fraction, an exponent, a
+    /// non-numeric string, a value out of range, a boolean, an array or an object is a
+    /// failure with status 200 on both scoring calls. null reads as 0.
+    /// </summary>
+    [Test]
+    public void TheScoreIsAnIntegerOnEveryScoringCall()
+    {
+        var scoring = TypedMethods().Where(m => SuccessType(m) == typeof(ZBScoreEmailResponse)).ToList();
+        Assert.That(scoring, Has.Count.GreaterThanOrEqualTo(2));
+        var failures = new List<string>();
+        foreach (var body in new[]
+                 {
+                     "{\"score\":5.5}", "{\"score\":5.0}", "{\"score\":1e2}", "{\"score\":1e400}",
+                     "{\"score\":\"5.9\"}", "{\"score\":\"abc\"}", "{\"score\":\"\"}", "{\"score\":\" 9\"}",
+                     "{\"score\":\"+9\"}", "{\"score\":true}", "{\"score\":[9]}", "{\"score\":{}}",
+                     "{\"score\":2147483648}", "{\"score\":\"2147483648\"}"
+                 })
+            RunFieldSweep(scoring, body, ExpectFailure200, failures);
+        foreach (var body in new[]
+                 {
+                     "{\"score\":9}", "{\"score\":\"9\"}", "{\"score\":\"-1\"}", "{\"score\":0}",
+                     "{\"score\":null}", "{\"score\":2147483647}", "{\"score\":-2147483648}"
+                 })
+            RunFieldSweep(scoring, body, ExpectSuccess, failures);
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// null is accepted for an optional member (standard.md section 3): on every typed
+    /// call, each member of the result, and each validatebatch row member, set to null one
+    /// at a time, leaves an otherwise valid answer a success. Credits, address and status
+    /// are excluded.
+    /// </summary>
+    [Test]
+    public void NullInAnOptionalMemberIsNotAFailure()
+    {
+        var documented = Documented();
+        var failures = new List<string>();
+        var bodies = 0;
+        foreach (var group in TypedMethods().GroupBy(SuccessType))
+        {
+            var type = group.Key;
+            var isList = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
+            var model = isList ? type.GetGenericArguments()[0] : type;
+            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : "{}";
+            foreach (var member in ModelMembers(model).Where(m => !RequiredNames.Contains(m.Name)))
+            {
+                var body = JObject.Parse(baseText);
+                body[member.Name] = JValue.CreateNull();
+                var text = isList ? "[" + body.ToString(Formatting.None) + "]" : body.ToString(Formatting.None);
+                RunFieldSweep(group, text, ExpectSuccess, failures);
+                bodies++;
+            }
+            if (model == typeof(ZBValidateBatchResponse))
+            {
+                foreach (var member in ModelMembers(typeof(ZBValidateBatchResponseRow)).Where(m => !RequiredNames.Contains(m.Name)))
+                {
+                    var row = JObject.Parse("{\"address\":\"a@b.c\",\"status\":\"valid\"}");
+                    row[member.Name] = JValue.CreateNull();
+                    RunFieldSweep(group, "{\"email_batch\":[" + row.ToString(Formatting.None) + "]}", ExpectSuccess, failures);
+                    bodies++;
+                }
+            }
+        }
+        Assert.That(bodies, Is.GreaterThan(100));
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// "success" is a JSON boolean. The string "false" (any case) is neither a failure
+    /// report read as false nor a success: on every request method, JSON and download
+    /// alike, it is a failure with status 200 (standard.md section 3, E4).
+    /// </summary>
+    [Test]
+    public void ASuccessStringFalseIsAFailureWithStatus200OnEveryRequestMethod()
+    {
+        var methods = RequestSweep.RequestMethods(typeof(ZeroBounce)).ToList();
+        Assert.That(methods, Has.Count.GreaterThan(40));
+        var failures = new List<string>();
+        foreach (var body in new[]
+                 {
+                     "{\"success\":\"false\",\"message\":\"nope\"}", "{\"success\":\"False\",\"message\":\"nope\"}",
+                     "{\"success\":\"false\"}", "{\"success\":\"FALSE\",\"error\":\"nope\"}"
+                 })
+            RunFieldSweep(methods, body, ExpectFailure200, failures);
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
     [Test]
     public void AnArrayInPlaceOfAnObjectIsAFailureWithStatus200OnEveryTypedCall()
     {

@@ -192,6 +192,49 @@ public partial class OfflineApiTests
         }
     }
 
+    /// <summary>
+    /// An unset return URL is not sent on any upload (standard.md section 4, the return_url
+    /// omission guard): the field is absent from the request, not sent empty, on the
+    /// validation and the scoring upload, from a path and from a stream alike.
+    /// </summary>
+    [Test]
+    public void AnUnsetReturnUrlIsNotSentOnAnyUpload()
+    {
+        var api = new FakeApiHandler();
+        var client = new OfflineClient(api, "file-key");
+        var csv = WriteCsv();
+        try
+        {
+            var uploads = new List<Action<Action<ZBSendFileResponse>, Action<string>>>
+            {
+                (ok, fail) => client.SendFile(csv, new ZeroBounce.SendFileOptions(), ok, fail),
+                (ok, fail) =>
+                {
+                    using var stream = File.OpenRead(csv);
+                    client.SendFile(stream, "upload.csv", new ZeroBounce.SendFileOptions(), ok, fail);
+                },
+                (ok, fail) => client.ScoringSendFile(csv, new ZeroBounce.SendFileOptions(), ok, fail),
+                (ok, fail) =>
+                {
+                    using var stream = File.OpenRead(csv);
+                    client.ScoringSendFile(stream, "upload.csv", new ZeroBounce.SendFileOptions(), ok, fail);
+                },
+            };
+            foreach (var upload in uploads)
+            {
+                var (_, error) = Capture<ZBSendFileResponse>(upload);
+                Assert.That(error, Is.Null);
+                var request = Only(api);
+                api.Clear();
+                Assert.That(request.Fields.ContainsKey("return_url"), Is.False, request.Path + " sent return_url");
+            }
+        }
+        finally
+        {
+            File.Delete(csv);
+        }
+    }
+
     [Test]
     public void SendFileSendsSetNameColumn()
     {
@@ -2107,6 +2150,23 @@ public partial class OfflineApiTests
         {
             File.Delete(csv);
         }
+    }
+
+    /// <summary>
+    /// The clients print no key (check S6, standard.md section 3): ToString and the debugger
+    /// view of a client holding the API key, and of a Warmup client holding the Warmup key,
+    /// contain neither key.
+    /// </summary>
+    [Test]
+    public void TheClientsPrintNoKey()
+    {
+        const string key = "tostring-api-key-7d21x";
+        const string warmupKey = "tostring-warmup-key-b4c9y";
+        var client = new OfflineClient(new FakeApiHandler(), key);
+        var warmup = new ZeroBounceWarmup();
+        warmup.Initialize(warmupKey);
+        foreach (var printed in new[] { client.ToString(), warmup.ToString() })
+            Assert.That(printed.Contains(key) || printed.Contains(warmupKey), Is.False, printed);
     }
 
     private static (T? Response, string? Error) Capture<T>(Action<Action<T>, Action<string>> call) where T : class
