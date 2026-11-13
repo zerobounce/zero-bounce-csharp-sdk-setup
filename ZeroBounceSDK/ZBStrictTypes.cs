@@ -87,11 +87,36 @@ namespace ZeroBounceSDK
         {
             if (!(JToken.Parse(body) is JObject obj) || obj.ContainsKey("Message"))
                 return null;
+            return MissingString(obj, "");
+        }
+
+        /// <summary>
+        /// Every <c>validatebatch</c> row is an object with <c>address</c> and
+        /// <c>status</c> as strings.
+        /// </summary>
+        /// <returns>Why <paramref name="body"/> is not a batch result, or null.</returns>
+        internal static string MissingBatchRowField(string body)
+        {
+            if (!(JToken.Parse(body) is JObject obj) || !(obj["email_batch"] is JArray rows))
+                return null;
+            foreach (var row in rows)
+            {
+                if (!(row is JObject rowObject))
+                    return "ZeroBounce returned " + Kind(row) + " for a row of email_batch, which is not an object.";
+                var missing = MissingString(rowObject, "email_batch row ");
+                if (missing != null)
+                    return missing;
+            }
+            return null;
+        }
+
+        private static string MissingString(JObject obj, string where)
+        {
             foreach (var field in new[] { "address", "status" })
             {
                 var value = obj[field];
                 if (value == null || value.Type != JTokenType.String)
-                    return "ZeroBounce returned " + Kind(value) + " for " + field + ", which is not a string.";
+                    return "ZeroBounce returned " + Kind(value) + " for " + where + field + ", which is not a string.";
             }
             return null;
         }
@@ -111,8 +136,10 @@ namespace ZeroBounceSDK
         }
 
         /// <summary>
-        /// GetCredits' <c>Credits</c>: a JSON string holding a whole number, such as
-        /// <c>"-1"</c> or <c>"12345"</c>. A bare number, <c>"abc"</c>, <c>"5.0"</c>,
+        /// GetCredits' <c>Credits</c>: a whole number in the <c>int</c> range, sent as a
+        /// JSON string (<c>"-1"</c>, <c>"12345"</c>, what the live API sends) or a JSON
+        /// integer (<c>2375323</c>, zerobounce.net's own example). A fractional
+        /// number, <c>"abc"</c>, <c>"5.0"</c>, a number outside the <c>int</c> range,
         /// <c>null</c> or a missing field is an error.
         /// </summary>
         internal sealed class CreditsConverter : JsonConverter
@@ -123,6 +150,9 @@ namespace ZeroBounceSDK
 
             public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
             {
+                if (reader.TokenType == JsonToken.Integer && reader.Value is long number
+                    && number >= int.MinValue && number <= int.MaxValue)
+                    return (int)number;
                 var text = reader.TokenType == JsonToken.String ? (string)reader.Value : null;
                 if (text != null && Integer.IsMatch(text)
                     && int.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var credits))
@@ -130,7 +160,7 @@ namespace ZeroBounceSDK
                 var found = Kind(reader.TokenType);
                 reader.Skip();
                 throw new ZBInvalidValueException("ZeroBounce returned " + found
-                                                  + " for Credits, which is not a string holding a whole number.");
+                                                  + " for Credits, which is not a whole number in the int range.");
             }
 
             public override void WriteJson(JsonWriter writer, object value, JsonSerializer serializer) =>

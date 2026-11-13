@@ -1067,8 +1067,9 @@ namespace ZeroBounceSDK
             }
             if (response is ZBValidateBatchResponse batch && ReportAccountBatchError(batch, status, failureCallback))
                 return;
-            // Validate cannot answer without address and status (E7).
-            var missing = response is ZBValidateResponse ? ZBStrictTypes.MissingValidateField(body) : null;
+            // Validate, and every validatebatch row, cannot answer without address and status (E7).
+            var missing = response is ZBValidateResponse ? ZBStrictTypes.MissingValidateField(body)
+                : response is ZBValidateBatchResponse ? ZBStrictTypes.MissingBatchRowField(body) : null;
             if (missing != null)
             {
                 Fail(failureCallback, missing, status);

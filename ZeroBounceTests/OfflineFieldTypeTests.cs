@@ -12,9 +12,10 @@ namespace ZeroBounceTests;
 /// call, a field that arrives with a JSON type other than the documented one is a
 /// failure with status 200, never coerced (<c>true</c> read as <c>"True"</c>),
 /// defaulted, or an exception with status 0. <c>GetCredits</c> needs
-/// <c>Credits</c> as a string holding an integer, and <c>Validate</c> needs
-/// <c>address</c> and <c>status</c> as strings. Every documented example response
-/// still decodes.
+/// <c>Credits</c> as a whole number in the <c>int</c> range (a JSON string or a JSON
+/// integer), <c>Validate</c> and every <c>ValidateBatch</c> row need
+/// <c>address</c> and <c>status</c> as strings, and a JSON array is not an object.
+/// Every example response still decodes.
 /// </summary>
 public partial class OfflineTransportTests
 {
@@ -216,9 +217,12 @@ public partial class OfflineTransportTests
         var failures = new List<string>();
         foreach (var body in new[]
                  {
-                     "{}", "{\"Credits\":null}", "{\"Credits\":true}", "{\"Credits\":5}", "{\"Credits\":-1}",
-                     "{\"Credits\":\"abc\"}", "{\"Credits\":\"5.0\"}", "{\"Credits\":\"\"}", "{\"Credits\":1.5}",
-                     "{\"Credits\":[\"5\"]}",
+                     "{}", "{\"Credits\":null}", "{\"Credits\":true}", "{\"Credits\":5.5}", "{\"Credits\":5.0}",
+                     "{\"Credits\":1e3}", "{\"Credits\":\"abc\"}", "{\"Credits\":\"5.0\"}", "{\"Credits\":\"\"}",
+                     "{\"Credits\":1.5}", "{\"Credits\":[\"5\"]}", "{\"Credits\":[5]}", "{\"Credits\":{}}",
+                     // Outside the int range of ZBCreditsResponse.Credits.
+                     "{\"Credits\":2147483648}", "{\"Credits\":-2147483649}", "{\"Credits\":\"2147483648\"}",
+                     "{\"Credits\":99999999999999999999999}",
                  })
             RunFieldSweep(credits, body, ExpectFailure200, failures);
         foreach (var body in new[]
@@ -228,8 +232,71 @@ public partial class OfflineTransportTests
                      "{\"address\":\"a@b.c\",\"status\":null}", "{\"address\":\"a@b.c\",\"status\":\"valid\",\"sub_status\":7}", "{}",
                  })
             RunFieldSweep(validate, body, ExpectFailure200, failures);
-        foreach (var body in new[] { "{\"Credits\":\"-1\"}", "{\"Credits\":\"12345\"}" })
+        // Credits is an integer sent as a JSON string (the live API) or as a JSON
+        // integer (zerobounce.net's own example, {"Credits":2375323}).
+        foreach (var body in new[]
+                 {
+                     "{\"Credits\":\"-1\"}", "{\"Credits\":\"12345\"}", "{\"Credits\":2375323}", "{\"Credits\":-1}",
+                     "{\"Credits\":0}", "{\"Credits\":2147483647}", "{\"Credits\":-2147483648}",
+                 })
             RunFieldSweep(credits, body, ExpectSuccess, failures);
+        // Every validatebatch row is an object with address and status as strings.
+        var batch = TypedMethods().Where(m => SuccessType(m) == typeof(ZBValidateBatchResponse)).ToList();
+        Assert.That(batch, Is.Not.Empty);
+        foreach (var row in new[]
+                 {
+                     "{\"status\":\"valid\"}", "{\"address\":\"a@b.c\"}", "{}", "{\"address\":null,\"status\":\"valid\"}",
+                     "{\"address\":\"a@b.c\",\"status\":null}", "{\"address\":true,\"status\":\"valid\"}",
+                     "{\"address\":\"a@b.c\",\"status\":5}", "{\"Message\":\"Greylist validation still in progress.\"}",
+                     "5", "null", "\"x\"", "[]",
+                 })
+        {
+            RunFieldSweep(batch, "{\"email_batch\":[" + row + "]}", ExpectFailure200, failures);
+            RunFieldSweep(batch, "{\"email_batch\":[{\"address\":\"ok@b.c\",\"status\":\"valid\"}," + row + "]}",
+                ExpectFailure200, failures);
+        }
+        RunFieldSweep(batch, "{\"email_batch\":[{\"address\":\"a@b.c\",\"status\":\"valid\"}]}", ExpectSuccess, failures);
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// A JSON array where the call's result is an object (check E7): an empty array,
+    /// an array of one string and a positional array (values in field order) are a
+    /// failure with status 200 on every typed call. A call whose result is a list
+    /// accepts the empty array, and still rejects the others.
+    /// </summary>
+    [Test]
+    public void AnArrayInPlaceOfAnObjectIsAFailureWithStatus200OnEveryTypedCall()
+    {
+        bool IsList(MethodInfo m) => SuccessType(m).IsGenericType && SuccessType(m).GetGenericTypeDefinition() == typeof(List<>);
+        var objects = TypedMethods().Where(m => !IsList(m)).ToList();
+        var lists = TypedMethods().Where(IsList).ToList();
+        var failures = new List<string>();
+        foreach (var body in new[]
+                 {
+                     "[]", "[\"x\"]", "[\"a@example.com\",10]", "[true,\"3\"]", "[\"a@example.com\",\"valid\"]", "[[]]", "[{}]",
+                 })
+            RunFieldSweep(objects, body, ExpectFailure200, failures);
+        foreach (var body in new[] { "[\"x\"]", "[\"a@example.com\",10]", "[true,\"3\"]", "[[]]", "[5]" })
+            RunFieldSweep(lists, body, ExpectFailure200, failures);
+        RunFieldSweep(lists, "[]", ExpectSuccess, failures);
+        Assert.That(objects, Has.Count.GreaterThan(40));
+        Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
+    }
+
+    /// <summary>
+    /// An upload's <c>message</c> may be an array of strings: every item must be a
+    /// string (not a number, boolean, object, array or null).
+    /// </summary>
+    [Test]
+    public void EveryItemOfAnUploadMessageArrayIsAString()
+    {
+        var uploads = TypedMethods().Where(m => SuccessType(m) == typeof(ZBSendFileResponse)).ToList();
+        Assert.That(uploads, Has.Count.GreaterThanOrEqualTo(4));
+        var failures = new List<string>();
+        foreach (var message in new[] { "[5]", "[\"ok\",5]", "[\"ok\",null]", "[\"ok\",true]", "[\"ok\",{}]", "[\"ok\",[]]", "[null]" })
+            RunFieldSweep(uploads, "{\"success\":true,\"message\":" + message + ",\"file_id\":\"x\"}", ExpectFailure200, failures);
+        RunFieldSweep(uploads, "{\"success\":true,\"message\":[\"ok\",\"also\"],\"file_id\":\"x\"}", ExpectSuccess, failures);
         Assert.That(failures, Is.Empty, failures.Count + " failures:\n" + string.Join("\n", failures));
     }
 
