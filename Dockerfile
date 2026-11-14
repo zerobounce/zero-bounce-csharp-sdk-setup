@@ -1,7 +1,7 @@
 # ZeroBounce C# SDK — .NET 10 SDK image for tests (the test projects target net10.0).
 # Mount the repo at /app (see sdk-docs/docker-compose.yml). Do not rely on COPY for local workflows.
-# Pinned by digest (the multi-arch index of sdk:10.0); Dependabot's docker ecosystem keeps it current.
-FROM mcr.microsoft.com/dotnet/sdk:11.0@sha256:65f3c7c6a25a239ab3e6719f2896147e7b68242ff2d8818dd70498bde6ef8bea
+# Pinned by digest (the multi-arch index of sdk:10.0); Dependabot's docker ecosystem keeps the digest current within 10.0 (major/minor updates are ignored: global.json pins SDK 10 and the tests target net10.0).
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:fe0fd4e93bd2fbb47c883b7a6369e5c8d3db8bf01cdc5981f6ee35fbdf3ff4fb
 WORKDIR /app
 
 # The non-root user needs a writable home for the dotnet CLI and the NuGet cache.

@@ -74,6 +74,11 @@ updates:
         applies-to: security-updates
         patterns:
           - "*"
+      # init and analyze must move together (CodeQL fails when their versions differ).
+      codeql-action:
+        applies-to: version-updates
+        patterns:
+          - "github/codeql-action*"
 
   - package-ecosystem: "docker"
     directory: "/"
@@ -86,6 +91,10 @@ updates:
     labels:
       - "dependabot-security"
       - "docker dependencies"
+    # global.json pins SDK 10 and the tests target net10.0: only digest/patch updates of sdk:10.0.
+    ignore:
+      - dependency-name: "dotnet/sdk"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
     groups:
       docker-security:
         applies-to: security-updates
