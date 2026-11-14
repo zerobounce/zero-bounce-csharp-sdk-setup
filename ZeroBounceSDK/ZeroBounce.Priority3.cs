@@ -1,3 +1,4 @@
+using System.Globalization;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -202,7 +203,7 @@ namespace ZeroBounceSDK
             }
             var fields = new Dictionary<string, string>
             {
-                { "email_address_column", emailAddressColumn.ToString() }
+                { "email_address_column", emailAddressColumn.ToString(CultureInfo.InvariantCulture) }
             };
             RunSync(() => _SendBulkRootMultipart(_listEvaluatorBaseUrl + "/", file, fileName, fields, successCallback, failureCallback));
         }
@@ -351,7 +352,7 @@ namespace ZeroBounceSDK
             }
             var extra = new Dictionary<string, string>();
             if (options.EmailAddressColumn.HasValue)
-                extra["email_address_column"] = options.EmailAddressColumn.Value.ToString();
+                extra["email_address_column"] = options.EmailAddressColumn.Value.ToString(CultureInfo.InvariantCulture);
             _BulkRootFileJob("/scoreS3file", options.FileName, options.HasHeaderRow,
                 options.RemoveDuplicates, options.ReturnUrl, extra, successCallback, failureCallback);
         }
@@ -535,24 +536,24 @@ namespace ZeroBounceSDK
 
         private static Dictionary<string, string> BuildEmailFinderFields(int domainColumn, EmailFinderSendFileOptions options)
         {
-            var fields = new Dictionary<string, string> { { "domain_column", domainColumn.ToString() } };
+            var fields = new Dictionary<string, string> { { "domain_column", domainColumn.ToString(CultureInfo.InvariantCulture) } };
             if (options == null) return fields;
             if (options.HasHeaderRow.HasValue)
                 fields["has_header_row"] = options.HasHeaderRow.Value ? "true" : "false";
             if (options.FirstNameColumn > 0)
-                fields["first_name_column"] = options.FirstNameColumn.ToString();
+                fields["first_name_column"] = options.FirstNameColumn.ToString(CultureInfo.InvariantCulture);
             if (options.LastNameColumn > 0)
-                fields["last_name_column"] = options.LastNameColumn.ToString();
+                fields["last_name_column"] = options.LastNameColumn.ToString(CultureInfo.InvariantCulture);
             if (options.MiddleNameColumn > 0)
-                fields["middle_name_column"] = options.MiddleNameColumn.ToString();
+                fields["middle_name_column"] = options.MiddleNameColumn.ToString(CultureInfo.InvariantCulture);
             if (options.FullNameColumn > 0)
-                fields["full_name_column"] = options.FullNameColumn.ToString();
+                fields["full_name_column"] = options.FullNameColumn.ToString(CultureInfo.InvariantCulture);
             return fields;
         }
 
         private static Dictionary<string, string> BuildDomainSearchFields(int domainColumn, DomainSearchSendFileOptions options)
         {
-            var fields = new Dictionary<string, string> { { "domain_column", domainColumn.ToString() } };
+            var fields = new Dictionary<string, string> { { "domain_column", domainColumn.ToString(CultureInfo.InvariantCulture) } };
             if (options?.HasHeaderRow.HasValue == true)
                 fields["has_header_row"] = options.HasHeaderRow.Value ? "true" : "false";
             return fields;
@@ -567,15 +568,15 @@ namespace ZeroBounceSDK
         {
             var fields = new Dictionary<string, string>();
             if (options.EmailAddressColumn.HasValue)
-                fields["email_address_column"] = options.EmailAddressColumn.Value.ToString();
+                fields["email_address_column"] = options.EmailAddressColumn.Value.ToString(CultureInfo.InvariantCulture);
             if (options.FirstNameColumn > 0)
-                fields["first_name_column"] = options.FirstNameColumn.ToString();
+                fields["first_name_column"] = options.FirstNameColumn.ToString(CultureInfo.InvariantCulture);
             if (options.LastNameColumn > 0)
-                fields["last_name_column"] = options.LastNameColumn.ToString();
+                fields["last_name_column"] = options.LastNameColumn.ToString(CultureInfo.InvariantCulture);
             if (options.GenderColumn > 0)
-                fields["gender_column"] = options.GenderColumn.ToString();
+                fields["gender_column"] = options.GenderColumn.ToString(CultureInfo.InvariantCulture);
             if (options.IpAddressColumn > 0)
-                fields["ip_address_column"] = options.IpAddressColumn.ToString();
+                fields["ip_address_column"] = options.IpAddressColumn.ToString(CultureInfo.InvariantCulture);
             if (options.AllowPhase2.HasValue)
                 fields["allow_phase_2"] = options.AllowPhase2.Value ? "true" : "false";
             return fields;
@@ -598,7 +599,7 @@ namespace ZeroBounceSDK
                 foreach (var entry in fields)
                     content.Add(new StringContent(entry.Value), entry.Key);
                 content.Add(new StringContent(_apiKey), "api_key");
-                content.Add(new StreamContent(file), "file", SafeMultipartFileName(fileName));
+                TransportSupport.AddFilePart(content, file, SafeMultipartFileName(fileName));
 
                 var result = await _client.PostAsync(url, content).ConfigureAwait(false);
                 await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
@@ -663,6 +664,12 @@ namespace ZeroBounceSDK
             if (string.IsNullOrWhiteSpace(fileId))
             {
                 Fail(failureCallback, "Empty parameter: file_id", 0);
+                return;
+            }
+            var refused = TransportSupport.RefuseDownloadTarget(localDownloadPath);
+            if (refused != null)
+            {
+                Fail(failureCallback, refused, 0);
                 return;
             }
             try

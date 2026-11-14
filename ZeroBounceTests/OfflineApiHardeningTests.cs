@@ -338,7 +338,7 @@ public partial class OfflineApiTests
             var api = new FakeApiHandler();
             var client = new OfflineClient(api, null!);
             var e1 = Assert.Throws<ZBClientException>(() => client.Initialize(key), shown);
-            Assert.That(e1!.Message, Is.EqualTo("api_key has surrounding whitespace or control characters"));
+            Assert.That(e1!.Message, Is.EqualTo("api_key has whitespace, control or invisible characters"));
             Assert.That(e1.Message, Does.Not.Contain("k123"));
             Assert.Throws<ZBClientException>(() => client.Initialize(key, ZBApiURL.ApiDefaultURL), shown);
             Assert.Throws<ZBClientException>(() => client.Initialize(key, "https://api.example.com/v2"), shown);

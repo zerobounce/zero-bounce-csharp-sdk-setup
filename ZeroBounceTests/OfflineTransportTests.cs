@@ -56,6 +56,9 @@ public partial class OfflineTransportTests
         /// <summary>When set, each download path already holds a file with this text before the call.</summary>
         public string? ExistingOut;
 
+        /// <summary>When 0 or more, that argument (before the callbacks) is replaced with null.</summary>
+        public int NullArg = -1;
+
         private string Out()
         {
             LastOut = Path.Combine(Path.GetTempPath(), "zb-" + Guid.NewGuid().ToString("n") + "-out.csv");
@@ -229,6 +232,7 @@ public partial class OfflineTransportTests
             if (!ArgsFor(method.DeclaringType!).TryGetValue(outcome.Signature, out var supplier))
                 throw new InvalidOperationException(outcome.Signature + " is not in the sweep");
             var before = supplier();
+            if (NullArg >= 0) before[NullArg] = null;
             outcome.Out = LastOut;
             var parameters = method.GetParameters();
             var failures = new List<object?>();
@@ -861,8 +865,8 @@ public partial class OfflineTransportTests
         foreach (var holder in new object[] { new HandlerClientProbe(), new ZeroBounceWarmup() })
         {
             var handler = HandlerOf(HttpClientsOf(holder).Single());
-            Assert.That(handler, Is.InstanceOf<HttpClientHandler>(), holder.GetType().Name);
-            Assert.That(((HttpClientHandler)handler).AllowAutoRedirect, Is.False, holder.GetType().Name + " follows redirects");
+            var follows = handler.GetType().GetProperty("AllowAutoRedirect")!.GetValue(handler);
+            Assert.That(follows, Is.False, holder.GetType().Name + " follows redirects");
         }
     }
 
@@ -922,7 +926,9 @@ public partial class OfflineTransportTests
     /// A key with characters that URL encoding and JSON escaping change: a space,
     /// <c>" / + % &amp; = &lt; &gt; ' \</c> and a non-ASCII <c>é</c>.
     /// </summary>
-    private const string OddKey = "echo+key/12\"34%56 7=<>&'\\890é";
+    private const string OddKey = "echo+key/12\"34%56 7=<>&'\\890\u00E9";
+    /// <summary>OddKey as a usable key: Initialize refuses spaces and non-ASCII characters.</summary>
+    private const string UsableOddKey = "echo+key/12\"34%567=<>&'\\890";
 
     /// <summary>
     /// The JSON escapes a server can apply: each Newtonsoft escaping (default,
@@ -1011,7 +1017,7 @@ public partial class OfflineTransportTests
     [Test]
     public void AnErrorBodyQuotingEverySpellingOfTheKeyNeverCarriesIt()
     {
-        var keySpellings = Spellings(OddKey);
+        var keySpellings = Spellings(UsableOddKey);
         var passwordSpellings = Spellings(SmtpPassword);
         // A JSON error field, so the whole quote reaches the message however long it is.
         var handler = new SpellingHandler(uri => JsonConvert.SerializeObject(new
@@ -1020,9 +1026,9 @@ public partial class OfflineTransportTests
                 uri.AbsolutePath.Contains("test-smtp") ? passwordSpellings : keySpellings)
         }), mediaType: "application/json");
         var client = new HandlerClient(handler);
-        client.Initialize(OddKey);
+        client.Initialize(UsableOddKey);
         var warmup = new ZeroBounceWarmup(handler);
-        warmup.Initialize(OddKey);
+        warmup.Initialize(UsableOddKey);
         var quoted = new List<string>();
         Sweep(client, warmup, (method, outcome, failures) =>
         {

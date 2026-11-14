@@ -1,3 +1,4 @@
+using System.Globalization;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -141,10 +142,10 @@ namespace ZeroBounceSDK
                     Fail(failureCallback, "Invalid parameter: page_size (must be between 1 and 100)", 0);
                     return;
                 }
-                if (options.Page.HasValue) query += "&page=" + Enc(options.Page.Value.ToString());
+                if (options.Page.HasValue) query += "&page=" + Enc(options.Page.Value.ToString(CultureInfo.InvariantCulture));
                 // LIVE: the page size is page_size. Sent as pageSize it is
                 // silently ignored and the whole list comes back.
-                if (options.PageSize.HasValue) query += "&page_size=" + Enc(options.PageSize.Value.ToString());
+                if (options.PageSize.HasValue) query += "&page_size=" + Enc(options.PageSize.Value.ToString(CultureInfo.InvariantCulture));
                 if (!string.IsNullOrWhiteSpace(options.CreatedAfter))
                     query += "&createdAfter=" + Enc(options.CreatedAfter.Trim());
                 if (!string.IsNullOrWhiteSpace(options.CreatedBefore))

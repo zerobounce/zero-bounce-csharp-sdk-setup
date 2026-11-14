@@ -56,6 +56,10 @@ public partial class OfflineTransportTests
         return bodies;
     }
 
+    /// <summary>A valid answer for a result type with no documented example ({} is never one).</summary>
+    private static string FallbackBase(Type model) =>
+        model == typeof(ZBScoreEmailResponse) ? "{\"email\":\"a@b.c\",\"score\":50}" : "{}";
+
     /// <summary>JSON names a call cannot answer without (null is a failure for these).</summary>
     private static readonly HashSet<string> RequiredNames = new() { "Credits", "address", "status" };
 
@@ -192,7 +196,7 @@ public partial class OfflineTransportTests
             var type = group.Key;
             var list = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
             var model = list ? type.GetGenericArguments()[0] : type;
-            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : "{}";
+            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : FallbackBase(model);
             // The base alone is a valid answer, so each failure below is the wrong field's.
             RunFieldSweep(group, list ? "[" + baseText + "]" : baseText, ExpectSuccess, failures);
             foreach (var (name, memberType, member) in ModelMembers(model))
@@ -316,7 +320,7 @@ public partial class OfflineTransportTests
             var type = group.Key;
             var isList = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
             var model = isList ? type.GetGenericArguments()[0] : type;
-            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : "{}";
+            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : FallbackBase(model);
             foreach (var member in ModelMembers(model).Where(m => !RequiredNames.Contains(m.Name)))
             {
                 var body = JObject.Parse(baseText);
@@ -357,7 +361,7 @@ public partial class OfflineTransportTests
             var type = group.Key;
             var isList = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
             var model = isList ? type.GetGenericArguments()[0] : type;
-            var examples = documented.TryGetValue(model, out var found) ? found : new List<string> { "{}" };
+            var examples = documented.TryGetValue(model, out var found) ? found : new List<string> { FallbackBase(model) };
             foreach (var example in examples)
             foreach (var member in ModelMembers(model).Where(m => !RequiredNames.Contains(m.Name)))
             {
@@ -365,6 +369,7 @@ public partial class OfflineTransportTests
                 // The greylist answer {"Message": ...} is not a result to strip down: its Message is the answer.
                 if (body.Count == 1 && body.ContainsKey("Message")) continue;
                 body.Remove(member.Name);
+                if (body.Count == 0) continue; // {} is an error on every typed call, not a missing member
                 var text = isList ? "[" + body.ToString(Formatting.None) + "]" : body.ToString(Formatting.None);
                 RunFieldSweep(group, text, ExpectSuccess, failures);
                 bodies++;
@@ -573,7 +578,7 @@ public partial class OfflineTransportTests
             var type = group.Key;
             var isList = type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>);
             var model = isList ? type.GetGenericArguments()[0] : type;
-            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : "{}";
+            var baseText = documented.TryGetValue(model, out var examples) ? examples[0] : FallbackBase(model);
             foreach (var member in ModelMembers(model).Where(m => m.Type == typeof(DateTime)))
             {
                 var body = JObject.Parse(baseText);

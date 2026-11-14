@@ -14,20 +14,20 @@ namespace ZeroBounceSDK
 {
     public partial class ZeroBounce
     {
-        protected static readonly ZeroBounce _instance = new ZeroBounce();
+        internal static readonly ZeroBounce _instance = new ZeroBounce();
 
         // Explicit static constructor to tell C# compiler
         // not to mark type as beforefieldinit
         static ZeroBounce()
         {
         }
-        protected ZeroBounce()
+        internal ZeroBounce()
         {
         }
         public static ZeroBounce Instance => _instance;
 
         private const string BulkApiBaseUrl = "https://bulkapi.zerobounce.net/v2";
-        protected HttpClient _client = CreateHttpClient();
+        internal HttpClient _client = CreateHttpClient();
         private string _apiKey;
         private string _apiBaseUrl = ZBApiURLConverter.GetApiURLString(ZBApiURL.ApiDefaultURL);
 
@@ -46,37 +46,30 @@ namespace ZeroBounceSDK
 
         private static HttpClient CreateHttpClient()
         {
-            var handler = new HttpClientHandler { AllowAutoRedirect = false };
-            var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
+            var client = new HttpClient(TransportSupport.CreateHandler()) { Timeout = TimeSpan.FromSeconds(120) };
             client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "ZeroBounceSDK/" + PackageVersionValue);
             return client;
         }
 
         private static void RequireHttpsUrl(string url)
         {
-            if (string.IsNullOrWhiteSpace(url) ||
-                !url.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            if (!HttpErrors.IsAllowedBaseUrl(url))
             {
                 throw new ZBClientException("base_url must be an https:// URL");
             }
         }
 
         /// <summary>
-        /// A key with surrounding whitespace or control characters is never a
-        /// valid key, and the transport would quote it, unredacted, in its own
-        /// error. The Warmup client rejects it the same way.
+        /// A key with whitespace, control or invisible format characters
+        /// anywhere, or any character outside visible ASCII, is never a valid
+        /// key and cannot be sent in a header. The Warmup client rejects it the
+        /// same way.
         /// </summary>
         private static void RequireUsableApiKey(string apiKey)
         {
-            if (string.IsNullOrWhiteSpace(apiKey))
-                throw new ZBClientException("Empty parameter: api_key");
-            if (apiKey != apiKey.Trim())
-                throw new ZBClientException("api_key has surrounding whitespace or control characters");
-            foreach (var c in apiKey)
-            {
-                if (char.IsControl(c))
-                    throw new ZBClientException("api_key has surrounding whitespace or control characters");
-            }
+            var problem = HttpErrors.ApiKeyProblem(apiKey);
+            if (problem != null)
+                throw new ZBClientException(problem);
         }
 
         private static string Enc(string value) => Uri.EscapeDataString(value ?? "");
@@ -161,17 +154,20 @@ namespace ZeroBounceSDK
             if (InvalidApiKey(failureCallback)) return;
             if (RejectTimeout(options?.Timeout, false, failureCallback)) return;
             if (RejectCallbackUrl(options, failureCallback)) return;
+            if (RejectBlank(email, "email", failureCallback)) return;
 
             if (options != null && options.UsePost)
             {
                 var form = new Dictionary<string, string>
                 {
                     { "api_key", _apiKey },
-                    { "email", email },
-                    { "ip_address", ipAddress ?? "" }
+                    { "email", email }
                 };
+                // Left out when blank, so the API's own default applies (lesson 13).
+                if (!string.IsNullOrWhiteSpace(ipAddress))
+                    form["ip_address"] = ipAddress;
                 if (options.Timeout.HasValue)
-                    form["timeout"] = options.Timeout.Value.ToString();
+                    form["timeout"] = options.Timeout.Value.ToString(CultureInfo.InvariantCulture);
                 if (options.ActivityData.HasValue)
                     form["activity_data"] = options.ActivityData.Value ? "true" : "false";
                 if (options.VerifyPlus.HasValue)
@@ -182,15 +178,17 @@ namespace ZeroBounceSDK
                     form["greylist_processing"] = options.GreylistProcessing.Value ? "true" : "false";
                 if (options.CallbackUrl != null)
                     form["callback_url"] = options.CallbackUrl;
-                RunSync(() => _sendFormPostRequest(_apiBaseUrl + "/validate", form, successCallback, failureCallback));
+                RunSync(() => _sendFormPostRequest(_apiBaseUrl + "/validate", form, successCallback, failureCallback, greylistIsResult: true));
                 return;
             }
 
-            var query = _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email) + "&ip_address=" + Enc(ipAddress ?? "");
+            var query = _apiBaseUrl + "/validate?api_key=" + Enc(_apiKey) + "&email=" + Enc(email);
+            if (!string.IsNullOrWhiteSpace(ipAddress))
+                query += "&ip_address=" + Enc(ipAddress);
             if (options != null)
             {
                 if (options.Timeout.HasValue)
-                    query += "&timeout=" + Enc(options.Timeout.Value.ToString());
+                    query += "&timeout=" + Enc(options.Timeout.Value.ToString(CultureInfo.InvariantCulture));
                 if (options.ActivityData.HasValue)
                     query += "&activity_data=" + Enc(options.ActivityData.Value ? "true" : "false");
                 if (options.VerifyPlus.HasValue)
@@ -203,7 +201,7 @@ namespace ZeroBounceSDK
                     query += "&callback_url=" + Enc(options.CallbackUrl);
             }
 
-            RunSync(() => _sendRequest(query, successCallback, failureCallback));
+            RunSync(() => _sendRequest(query, successCallback, failureCallback, greylistIsResult: true));
         }
 
         /// <param name="emailBatch">A list of ZBValidateEmailRow objects</param>
@@ -266,7 +264,7 @@ namespace ZeroBounceSDK
                 failureCallback));
         }
 
-        /// <sumary>This API will tell you how many credits you have left on your account. It's simple, fast and easy to use.</sumary>
+        /// <summary>This API will tell you how many credits you have left on your account. It's simple, fast and easy to use.</summary>
         /// <param name="successCallback"> The success callback function, called with a ZBCreditsResponse object</param>
         /// <param name="failureCallback"> The failure callback function, called with a string error message</param>
         public void GetCredits(Action<ZBCreditsResponse> successCallback, Action<string> failureCallback)
@@ -288,8 +286,8 @@ namespace ZeroBounceSDK
 
             RunSync(() => _sendRequest(
                 _apiBaseUrl + "/getapiusage?api_key=" + Enc(_apiKey)
-                + "&start_date=" + Enc(startDate.ToString("yyyy-MM-dd"))
-                + "&end_date=" + Enc(endDate.ToString("yyyy-MM-dd")),
+                + "&start_date=" + Enc(startDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))
+                + "&end_date=" + Enc(endDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)),
                 successCallback,
                 failureCallback));
         }
@@ -299,6 +297,7 @@ namespace ZeroBounceSDK
             Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (RejectBlank(email, "email", failureCallback)) return;
 
             RunSync(() => _sendRequest(
                 _apiBaseUrl + "/activity?api_key=" + Enc(_apiKey)
@@ -312,6 +311,7 @@ namespace ZeroBounceSDK
             Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (RejectBlank(email, "email", failureCallback)) return;
 
             RunSync(() => _sendRequest(
                 _apiBaseUrl + "/scoring?api_key=" + Enc(_apiKey)
@@ -325,6 +325,7 @@ namespace ZeroBounceSDK
             Action<string> failureCallback)
         {
             if (InvalidApiKey(failureCallback)) return;
+            if (RejectBlank(email, "email", failureCallback)) return;
 
             var form = new Dictionary<string, string>
             {
@@ -416,29 +417,29 @@ namespace ZeroBounceSDK
                 Fail(failureCallback, "Parameter error: domain and company_name cannot be used together", 0);
                 return;
             }
+            if (RejectBlank(firstName, "first_name", failureCallback)) return;
 
             string url = _apiBaseUrl + "/guessformat?api_key=" + Enc(_apiKey);
             if (domain != null) {
-                url += "&domain=" + Enc(domain ?? "");
+                url += "&domain=" + Enc(domain);
             }
             if (companyName != null) {
-                url += "&company_name=" + Enc(companyName ?? "");
+                url += "&company_name=" + Enc(companyName);
             }
             if (firstName != null) {
-                url += "&first_name=" + Enc(firstName ?? "");
+                url += "&first_name=" + Enc(firstName);
             }
             if (middleName != null) {
-                url += "&middle_name=" + Enc(middleName ?? "");
+                url += "&middle_name=" + Enc(middleName);
             }
             if (lastName != null) {
-                url += "&last_name=" + Enc(lastName ?? "");
+                url += "&last_name=" + Enc(lastName);
             }
 
             RunSync(() => _sendRequest(
                 url,
                 successCallback,
-                failureCallback,
-                messageOnlyIsFailure: true));
+                failureCallback));
         }
 
 
@@ -479,17 +480,16 @@ namespace ZeroBounceSDK
 
             string url = _apiBaseUrl + "/guessformat?api_key=" + Enc(_apiKey);
             if (domain != null) {
-                url += "&domain=" + Enc(domain ?? "");
+                url += "&domain=" + Enc(domain);
             }
             if (companyName != null) {
-                url += "&company_name=" + Enc(companyName ?? "");
+                url += "&company_name=" + Enc(companyName);
             }
 
             RunSync(() => _sendRequest(
                 url,
                 successCallback,
-                failureCallback,
-                messageOnlyIsFailure: true));
+                failureCallback));
         }
 
 
@@ -623,25 +623,25 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new MultipartFormDataContent();
-                content.Add(new StreamContent(file), "file", SafeMultipartFileName(fileName));
+                TransportSupport.AddFilePart(content, file, SafeMultipartFileName(fileName));
 
                 content.Add(new StringContent(_apiKey), "api_key");
 
                 if (options != null)
                 {
-                    content.Add(new StringContent(options.EmailAddressColumn.ToString()), "email_address_column");
+                    content.Add(new StringContent(options.EmailAddressColumn.ToString(CultureInfo.InvariantCulture)), "email_address_column");
                     if (options.ReturnUrl != null)
                         content.Add(new StringContent(options.ReturnUrl), "return_url");
                     if (!scoring)
                     {
                         if (options.FirstNameColumn > 0)
-                            content.Add(new StringContent(options.FirstNameColumn.ToString()), "first_name_column");
+                            content.Add(new StringContent(options.FirstNameColumn.ToString(CultureInfo.InvariantCulture)), "first_name_column");
                         if (options.LastNameColumn > 0)
-                            content.Add(new StringContent(options.LastNameColumn.ToString()), "last_name_column");
+                            content.Add(new StringContent(options.LastNameColumn.ToString(CultureInfo.InvariantCulture)), "last_name_column");
                         if (options.GenderColumn > 0)
-                            content.Add(new StringContent(options.GenderColumn.ToString()), "gender_column");
+                            content.Add(new StringContent(options.GenderColumn.ToString(CultureInfo.InvariantCulture)), "gender_column");
                         if (options.IpAddressColumn > 0)
-                            content.Add(new StringContent(options.IpAddressColumn.ToString()), "ip_address_column");
+                            content.Add(new StringContent(options.IpAddressColumn.ToString(CultureInfo.InvariantCulture)), "ip_address_column");
                         if (options.AllowPhase2.HasValue)
                             content.Add(new StringContent(options.AllowPhase2.Value ? "true" : "false"), "allow_phase_2");
                     }
@@ -733,6 +733,12 @@ namespace ZeroBounceSDK
             if (string.IsNullOrWhiteSpace(fileId))
             {
                 Fail(failureCallback, "Empty parameter: file_id", 0);
+                return;
+            }
+            var refused = TransportSupport.RefuseDownloadTarget(localDownloadPath);
+            if (refused != null)
+            {
+                Fail(failureCallback, refused, 0);
                 return;
             }
 
@@ -894,6 +900,14 @@ namespace ZeroBounceSDK
             }
         }
 
+        /// <summary>A required string argument that is null or blank: refused before any request (lesson 23).</summary>
+        private bool RejectBlank(string value, string name, Action<string> failureCallback)
+        {
+            if (!string.IsNullOrWhiteSpace(value)) return false;
+            Fail(failureCallback, "Empty parameter: " + name, 0);
+            return true;
+        }
+
         private bool InvalidApiKey(Action<string> failureCallback)
         {
             if (_apiKey != null) return false;
@@ -943,13 +957,13 @@ namespace ZeroBounceSDK
         }
 
         private async Task _sendRequest<T>(string url, Action<T> successCallback, Action<string> failureCallback,
-            bool messageOnlyIsFailure = false)
+            bool greylistIsResult = false)
             where T : ZBResponse
         {
             try
             {
                 var result = await _client.GetAsync(url).ConfigureAwait(false);
-                await DispatchJson(result, successCallback, failureCallback, messageOnlyIsFailure).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback, greylistIsResult).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -1008,14 +1022,14 @@ namespace ZeroBounceSDK
         }
 
         private async Task _sendFormPostRequest<T>(string url, Dictionary<string, string> form,
-            Action<T> successCallback, Action<string> failureCallback)
+            Action<T> successCallback, Action<string> failureCallback, bool greylistIsResult = false)
             where T : ZBResponse
         {
             try
             {
                 var content = new FormUrlEncodedContent(form);
                 var result = await _client.PostAsync(url, content).ConfigureAwait(false);
-                await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
+                await DispatchJson(result, successCallback, failureCallback, greylistIsResult).ConfigureAwait(false);
             }
             catch (Exception e)
             {
@@ -1023,14 +1037,14 @@ namespace ZeroBounceSDK
             }
         }
 
-        /// <param name="messageOnlyIsFailure">
-        /// For a call whose result is never a bare message: the email finder and
-        /// domain search. Not Validate, which answers a repeated greylist_processing
-        /// request with {"Message": "Greylist validation still in progress..."} -
-        /// a result, read through ZBValidateResponse.Message.
+        /// <param name="greylistIsResult">
+        /// Only for Validate, which answers a repeated greylist_processing request
+        /// with {"Message": "Greylist validation still in progress..."} - a result,
+        /// read through ZBValidateResponse.Message. Every other typed call treats a
+        /// message-only body, or an empty object, as an error with the HTTP status.
         /// </param>
         private async Task DispatchJson<T>(HttpResponseMessage result, Action<T> successCallback, Action<string> failureCallback,
-            bool messageOnlyIsFailure = false)
+            bool greylistIsResult = false)
             where T : ZBResponse
         {
             var status = (int)result.StatusCode;
@@ -1040,9 +1054,15 @@ namespace ZeroBounceSDK
             // LIVE: guessformat answers an invalid or drained key with an HTTP 200
             // and {"Message": "..."} alone, which used to come back as an empty
             // finder result.
-            if (messageOnlyIsFailure && HttpErrors.MessageOnlyBody(body))
+            if (HttpErrors.MessageOnlyBody(body, greylistIsResult))
             {
                 Fail(failureCallback, RedactApiKey(HttpErrors.MessageOnlyText(body), _apiKey), status);
+                return;
+            }
+            // No API call answers with an object that has nothing in it.
+            if (HttpErrors.EmptyObjectBody(body))
+            {
+                Fail(failureCallback, "ZeroBounce returned an empty JSON object instead of a result.", status);
                 return;
             }
             T response;
@@ -1148,7 +1168,7 @@ namespace ZeroBounceSDK
         /// </summary>
         private static void WriteDownload(string localDownloadPath, byte[] bytes)
         {
-            var target = Path.GetFullPath(localDownloadPath);
+            var target = TransportSupport.ResolveLink(Path.GetFullPath(localDownloadPath));
             var dirPath = Path.GetDirectoryName(target);
             if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
             var temp = Path.Combine(dirPath ?? "", "." + Path.GetFileName(target) + "." + Guid.NewGuid().ToString("N") + ".part");
@@ -1157,7 +1177,10 @@ namespace ZeroBounceSDK
                 using (var stream = OpenDownloadFile(temp))
                     stream.Write(bytes, 0, bytes.Length);
                 if (File.Exists(target))
+                {
+                    TransportSupport.SetUnixMode(temp, TransportSupport.GetUnixMode(target));
                     File.Replace(temp, target, null);
+                }
                 else
                     File.Move(temp, target);
             }
@@ -1185,7 +1208,7 @@ namespace ZeroBounceSDK
             var bytes = response.Content == null
                 ? new byte[0]
                 : await response.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
-            var body = Encoding.UTF8.GetString(bytes);
+            var body = TransportSupport.StripBom(Encoding.UTF8.GetString(bytes));
             var media = response.Content?.Headers.ContentType?.MediaType ?? "";
             var status = (int)response.StatusCode;
 
@@ -1203,7 +1226,7 @@ namespace ZeroBounceSDK
             // "message": ...} or {"error": ...} with an HTTP 200, sometimes
             // labelled text/plain or application/octet-stream. Neither is
             // written to disk, and neither is a success.
-            if (media.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0 || HttpErrors.IsJson(body))
+            if (TransportSupport.IsJsonDownload(media, body))
             {
                 var message = HttpErrors.MessageFromBody(body, status);
                 if (HttpErrors.IsJson(body) && message == body.Trim())

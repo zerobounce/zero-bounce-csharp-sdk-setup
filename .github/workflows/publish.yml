@@ -11,6 +11,11 @@ on:
 permissions:
   contents: read
 
+# One publish at a time; a second run waits instead of cancelling a push to NuGet half-way.
+concurrency:
+  group: publish-${{ github.workflow }}
+  cancel-in-progress: false
+
 jobs:
   validate-tag:
     outputs:
@@ -35,8 +40,9 @@ jobs:
           ref: refs/tags/${{ github.event.inputs.tag }}
           persist-credentials: false
       - name: Verify tag exists
+        env:
+          TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag }}"
           if [ -z "$TAG" ]; then
             echo "Error: Tag is required."
             exit 1
@@ -85,7 +91,7 @@ jobs:
           ref: refs/tags/${{ github.event.inputs.tag }}
           persist-credentials: false
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: "10.0.x"
 
@@ -156,8 +162,8 @@ jobs:
       - name: Create release if missing
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag }}
         run: |
-          TAG="${{ github.event.inputs.tag }}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Release $TAG already exists, skipping."
           else

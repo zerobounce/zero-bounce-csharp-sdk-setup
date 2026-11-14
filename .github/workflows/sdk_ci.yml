@@ -28,7 +28,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           dotnet-version: ${{ matrix.dotnet }}
 
@@ -37,6 +37,13 @@ jobs:
       - name: Run the tests on the newest runtime
         if: matrix.dotnet == '11.0.x'
         run: echo "DOTNET_ROLL_FORWARD=LatestMajor" >> "$GITHUB_ENV"
+
+      # global.json pins the 10.0 SDK band (rollForward latestFeature never goes to 11). The 11.0
+      # lane must build with SDK 11, so it drops the pin; the 10.0 lane keeps it, so it really
+      # builds with SDK 10 although the runner image also ships SDK 11.
+      - name: Build with SDK 11 on the 11.0 lane
+        if: matrix.dotnet == '11.0.x'
+        run: rm global.json
 
       - name: Show the .NET SDKs and runtimes
         run: dotnet --info

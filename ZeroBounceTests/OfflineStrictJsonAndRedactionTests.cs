@@ -197,7 +197,7 @@ public partial class OfflineTransportTests
     // -- redaction closed under encoding -------------------------------------------
 
     /// <summary>A key with a space, <c>" / \ + % &amp; = &lt; &gt; '</c>: every encoding changes it.</summary>
-    private const string FuzzKey = "fz+k/1\"2%3 4=<>&'\\5";
+    private const string FuzzKey = "fz+k/1\"2%34=<>&'\\5";
 
     private static readonly string[] EncodingNames = { "url%20", "url+", "json", "json\\/" };
 

@@ -28,7 +28,7 @@ Open an [issue](https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/issue
 
 ### Submitting Changes
 
-1. **Fork** the repository and create a branch from `main`:
+1. **Fork** the repository and create a branch from `master`:
    ```bash
    git checkout -b feature/your-feature-name
    ```
@@ -39,7 +39,7 @@ Open an [issue](https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/issue
 
 4. **Commit** with a clear message (e.g. `Add X`, `Fix Y`).
 
-5. **Push** your branch and open a **Pull Request** against `main`.
+5. **Push** your branch and open a **Pull Request** against `master`.
 
 6. In the PR description, briefly explain what changed and why. Link any related issues.
 

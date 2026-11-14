@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Text.RegularExpressions;
@@ -79,9 +80,65 @@ namespace ZeroBounceSDK
             foreach (var secret in list)
             {
                 foreach (var form in SecretForms(secret))
-                    value = value.Replace(form, "***");
+                    value = ReplaceIgnoreCase(value, form, "***");
             }
             return ExposesSecret(value, list) ? CredentialOmitted : value;
+        }
+
+        private static string ReplaceIgnoreCase(string text, string find, string replacement)
+        {
+            if (string.IsNullOrEmpty(find)) return text;
+            var at = text.IndexOf(find, StringComparison.OrdinalIgnoreCase);
+            if (at < 0) return text;
+            var builder = new System.Text.StringBuilder(text.Length);
+            var from = 0;
+            while (at >= 0)
+            {
+                builder.Append(text, from, at - from).Append(replacement);
+                from = at + find.Length;
+                at = text.IndexOf(find, from, StringComparison.OrdinalIgnoreCase);
+            }
+            return builder.Append(text, from, text.Length - from).ToString();
+        }
+
+        /// <summary>Shown when an api_key holds whitespace, a control character or an invisible one.</summary>
+        public const string ApiKeyCharactersProblem = "api_key has whitespace, control or invisible characters";
+
+        /// <summary>Shown when an api_key holds a character an HTTP header cannot carry (anything outside printable ASCII).</summary>
+        public const string ApiKeyHeaderProblem = "api_key has characters that cannot be sent in an HTTP header";
+
+        /// <summary>
+        /// Why <paramref name="key"/> cannot be used, or null when it can: whitespace of any
+        /// kind (NBSP, U+2028), control and Unicode format characters (U+200B, U+FEFF, U+180E,
+        /// U+2060, U+200D) anywhere in it, then anything outside printable ASCII.
+        /// </summary>
+        public static string ApiKeyProblem(string key)
+        {
+            if (string.IsNullOrWhiteSpace(key)) return "Empty parameter: api_key";
+            foreach (var c in key)
+            {
+                if (char.IsWhiteSpace(c) || char.IsControl(c)
+                    || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.Format
+                    || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.LineSeparator
+                    || CharUnicodeInfo.GetUnicodeCategory(c) == UnicodeCategory.ParagraphSeparator
+                    || c == '\u180E')
+                    return ApiKeyCharactersProblem;
+            }
+            foreach (var c in key)
+            {
+                if (c < 0x21 || c > 0x7E) return ApiKeyHeaderProblem;
+            }
+            return null;
+        }
+
+        /// <summary>Whether <paramref name="url"/> parses as an absolute https URL with a host and a valid port.</summary>
+        public static bool IsAllowedBaseUrl(string url)
+        {
+            if (string.IsNullOrWhiteSpace(url)) return false;
+            Uri parsed;
+            if (!Uri.TryCreate(url, UriKind.Absolute, out parsed)) return false;
+            return parsed.Scheme == Uri.UriSchemeHttps && !string.IsNullOrEmpty(parsed.Host) && parsed.Port > 0
+                   && parsed.Authority.IndexOf(' ') < 0 && url.IndexOf(' ') < 0;
         }
 
         /// <summary>Whether <paramref name="text"/>, or any view of it decoded up to four times, holds one of the secrets.</summary>
@@ -92,7 +149,7 @@ namespace ZeroBounceSDK
             var layer = new List<string> { text };
             for (var depth = 0; ; depth++)
             {
-                if (layer.Any(view => secrets.Any(secret => view.IndexOf(secret, StringComparison.Ordinal) >= 0)))
+                if (layer.Any(view => secrets.Any(secret => view.IndexOf(secret, StringComparison.OrdinalIgnoreCase) >= 0)))
                     return true;
                 if (depth == 4) return false;
                 var next = new List<string>();
@@ -150,10 +207,10 @@ namespace ZeroBounceSDK
                     continue;
                 }
                 var escape = text[i + 1];
-                var simple = "\"\\/bfnrt".IndexOf(escape);
+                var simple = "\"\\/bfnrt'".IndexOf(escape);
                 if (simple >= 0)
                 {
-                    builder.Append("\"\\/\b\f\n\r\t"[simple]);
+                    builder.Append("\"\\/\b\f\n\r\t'"[simple]);
                     i++;
                 }
                 else if (escape == 'u' && i + 5 < text.Length && HexValue(text[i + 2]) >= 0 && HexValue(text[i + 3]) >= 0
@@ -463,7 +520,13 @@ namespace ZeroBounceSDK
         /// Not for Validate: a repeated greylist_processing request answers
         /// {"Message": "Greylist validation still in progress..."}, a result.
         /// </summary>
-        public static bool MessageOnlyBody(string body)
+        public static bool MessageOnlyBody(string body) => MessageOnlyBody(body, false);
+
+        /// <summary>
+        /// With <paramref name="greylistIsResult"/> (Validate), a body whose only key is
+        /// "Message" holding non-blank text is the greylist answer, a result.
+        /// </summary>
+        public static bool MessageOnlyBody(string body, bool greylistIsResult)
         {
             var trimmed = (body ?? "").Trim();
             if (!trimmed.StartsWith("{")) return false;
@@ -471,6 +534,9 @@ namespace ZeroBounceSDK
             {
                 var parsed = JObject.Parse(trimmed);
                 if (parsed.Count == 0 || parsed.ContainsKey("success")) return false;
+                if (greylistIsResult && parsed.Count == 1 && parsed.TryGetValue("Message", out var greylist)
+                    && greylist.Type == JTokenType.String && !string.IsNullOrWhiteSpace(greylist.Value<string>()))
+                    return false;
                 foreach (var property in parsed.Properties())
                 {
                     if (Array.IndexOf(MessageOnlyKeys, property.Name) < 0) return false;
@@ -483,8 +549,17 @@ namespace ZeroBounceSDK
             }
         }
 
+        /// <summary>Whether the body is a JSON object with no members: never a result.</summary>
+        public static bool EmptyObjectBody(string body)
+        {
+            var trimmed = (body ?? "").Trim();
+            if (!trimmed.StartsWith("{")) return false;
+            try { return JObject.Parse(trimmed).Count == 0; }
+            catch (JsonException) { return false; }
+        }
+
         /// <summary>
-        /// The text of a message-only body (see <see cref="MessageOnlyBody"/>): the first
+        /// The text of a message-only body (see <see cref="MessageOnlyBody(string)"/>): the first
         /// message that has text, a list's non-blank strings joined with newlines.
         /// </summary>
         public static string MessageOnlyText(string body)
@@ -610,14 +685,14 @@ namespace ZeroBounceSDK
 
         private static string HtmlTitle(string body)
         {
-            var lower = body.ToLowerInvariant();
-            var start = lower.IndexOf("<title", StringComparison.Ordinal);
+            // Searched in the original: a lower-cased copy can differ in length (lesson 21).
+            var start = body.IndexOf("<title", StringComparison.OrdinalIgnoreCase);
             if (start < 0)
                 return "";
-            var openEnd = lower.IndexOf('>', start);
+            var openEnd = body.IndexOf('>', start);
             if (openEnd < 0)
                 return "";
-            var close = lower.IndexOf("</title>", openEnd, StringComparison.Ordinal);
+            var close = body.IndexOf("</title>", openEnd, StringComparison.OrdinalIgnoreCase);
             if (close < 0)
                 return "";
             var title = body.Substring(openEnd + 1, close - openEnd - 1).Trim();

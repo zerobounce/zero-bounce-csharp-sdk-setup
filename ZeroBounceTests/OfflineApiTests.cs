@@ -52,7 +52,7 @@ public partial class OfflineApiTests
         Assert.That(request.Host, Is.EqualTo("api.zerobounce.net"));
         Assert.That(request.Path, Is.EqualTo("/v2/validate"));
         Assert.That(request.Fields["email"], Is.EqualTo("person+tag@example.com"));
-        Assert.That(request.Fields["ip_address"], Is.EqualTo(""));
+        Assert.That(request.Fields.ContainsKey("ip_address"), Is.False);
         Assert.That(request.Fields["activity_data"], Is.EqualTo("false"));
         Assert.That(request.Fields["verify_plus"], Is.EqualTo("true"));
         Assert.That(request.Fields.ContainsKey("timeout"), Is.False);
@@ -85,7 +85,7 @@ public partial class OfflineApiTests
     public void ValidateEncodesQuerySoValuesCannotRewriteTheHost()
     {
         var api = new FakeApiHandler();
-        var client = new OfflineClient(api, "key with space");
+        var client = new OfflineClient(api, "key-with-dash");
 
         var (_, error) = Capture<ZBValidateResponse>((ok, fail) =>
             client.Validate("a&b@example.com", "203.0.113.5", ok, fail));
@@ -94,7 +94,7 @@ public partial class OfflineApiTests
         var request = Only(api);
         Assert.That(request.Host, Is.EqualTo("api.zerobounce.net"));
         Assert.That(request.Path, Is.EqualTo("/v2/validate"));
-        Assert.That(request.ApiKey, Is.EqualTo("key with space"));
+        Assert.That(request.ApiKey, Is.EqualTo("key-with-dash"));
         Assert.That(request.Fields["email"], Is.EqualTo("a&b@example.com"));
         Assert.That(request.RawUri, Does.Not.Contain("a&b@"));
     }
@@ -1934,7 +1934,7 @@ public partial class OfflineApiTests
         Assert.That(error, Is.Null);
         Assert.That(Only(api).Host, Is.EqualTo("bulk.example.test"));
 
-        Assert.Throws<ZBClientException>(new TestDelegate(() => client.SetListEvaluatorBaseUrl("http://evil.example")));
+        Assert.Throws<ZBClientException>(() => client.SetListEvaluatorBaseUrl("http://evil.example"));
     }
 
     // -- LastApiError: the outcome of the most recent call -------------------
@@ -2190,7 +2190,7 @@ public partial class OfflineApiTests
         var client = new OfflineClient(new FakeApiHandler(), key);
         var warmup = new ZeroBounceWarmup();
         warmup.Initialize(warmupKey);
-        foreach (var printed in new[] { client.ToString(), warmup.ToString() })
+        foreach (var printed in new[] { client.ToString()!, warmup.ToString()! })
             Assert.That(printed.Contains(key) || printed.Contains(warmupKey), Is.False, printed);
     }
 
@@ -2242,8 +2242,8 @@ public partial class OfflineApiTests
         var handler = typeof(HttpMessageInvoker)
             .GetField("_handler", BindingFlags.Instance | BindingFlags.NonPublic)
             ?.GetValue(client) as HttpMessageHandler;
-        if (handler is HttpClientHandler httpClientHandler)
-            return httpClientHandler.AllowAutoRedirect;
+        if (handler?.GetType().GetProperty("AllowAutoRedirect")?.GetValue(handler) is bool follows)
+            return follows;
         Assert.Fail("Could not read the HTTP handler (" + (handler?.GetType().FullName ?? "null") + ")");
         return true;
     }

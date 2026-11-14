@@ -52,12 +52,11 @@ namespace ZeroBounceSDK
 
         public ZeroBounceWarmup()
         {
-            var handler = new HttpClientHandler { AllowAutoRedirect = false };
-            _client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
+            _client = new HttpClient(TransportSupport.CreateHandler()) { Timeout = TimeSpan.FromSeconds(120) };
         }
 
         /// <summary>For tests: a client that sends through the given handler.</summary>
-        public ZeroBounceWarmup(HttpMessageHandler handler)
+        internal ZeroBounceWarmup(HttpMessageHandler handler)
         {
             _client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(120) };
         }
@@ -80,31 +79,28 @@ namespace ZeroBounceSDK
         /// <summary>
         /// Stores the Warmup API key and a custom https base URL.
         /// <para>
-        /// A key with surrounding whitespace or control characters, or a base
-        /// URL that is not https, is rejected here: every later call then
+        /// A key with whitespace, control, invisible or non-ASCII characters
+        /// anywhere, or a base URL that is not a well-formed https URL, is
+        /// rejected here: every later call then
         /// fails with that message rather than sending the key anywhere.
         /// </para>
         /// </summary>
         public void Initialize(string apiKey, string baseUrl)
         {
+            // Everything is checked before anything is stored: a refused call
+            // leaves no key behind and every later call reports the problem.
+            string problem = null;
+            if (string.IsNullOrWhiteSpace(apiKey)) problem = "api_key is required";
+            else problem = HttpErrors.ApiKeyProblem(apiKey);
+            if (problem == null && !HttpErrors.IsAllowedBaseUrl(baseUrl))
+                problem = "base_url must be an https:// URL";
+            if (problem != null)
+            {
+                _apiKey = null;
+                _setupProblem = problem;
+                return;
+            }
             _apiKey = apiKey;
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                _setupProblem = "api_key is required";
-                return;
-            }
-            // A key with surrounding whitespace or control characters would be
-            // quoted, unredacted, in the transport's own error.
-            if (apiKey != apiKey.Trim() || apiKey.Any(char.IsControl))
-            {
-                _setupProblem = "api_key has surrounding whitespace or control characters";
-                return;
-            }
-            if (baseUrl == null || !baseUrl.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
-            {
-                _setupProblem = "base_url must be an https:// URL";
-                return;
-            }
             _root = baseUrl.TrimEnd('/') + BasePath;
             _setupProblem = null;
         }
@@ -855,11 +851,11 @@ namespace ZeroBounceSDK
             // An HTML page with status 200 (a Cloudflare challenge or a proxy
             // error) is an error, as it is for the other downloads, not CSV.
             if (string.IsNullOrWhiteSpace(result.Body)
-                || result.ContentType.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0
+                || TransportSupport.IsJsonDownload(result.ContentType, result.Body)
                 || HttpErrors.ContentTypeIsHtml(result.ContentType)
                 || HttpErrors.BodyLooksLikeHtml(result.Body))
             {
-                Fail(fail, Redact(HttpErrors.MessageFromBody(result.Body, result.Status), null),
+                Fail(fail, Redact(HttpErrors.MessageFromBody(TransportSupport.StripBom(result.Body), result.Status), null),
                     result.Status);
                 return;
             }

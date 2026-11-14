@@ -22,9 +22,7 @@ on:
       timezone: Europe/Bucharest
 
 permissions:
-  contents: write
-  pull-requests: write
-  actions: write # list the runs on a pull request's head commit; start CI and CodeQL after a merge
+  contents: read
 
 env:
   # Shell snippet run after a merge. A merge made with GITHUB_TOKEN starts no push workflows, so
@@ -57,6 +55,10 @@ jobs:
     name: Approve and merge a security update
     runs-on: ubuntu-latest
     timeout-minutes: 75
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write # list the runs on a pull request's head commit; start CI and CodeQL after a merge
     if: >-
       github.event_name == 'pull_request'
       && github.event.pull_request.user.login == 'dependabot[bot]'
@@ -146,6 +148,10 @@ jobs:
     name: Merge approved security updates whose checks passed
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write # list the runs on a pull request's head commit; start CI and CodeQL after a merge
     if: github.event_name == 'schedule'
     steps:
       - name: Merge approved Dependabot pull requests whose checks passed

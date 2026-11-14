@@ -2,7 +2,6 @@
 
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
-        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
         <Title>ZeroBounce.SDK</Title>
         <Authors>ZeroBounceIntegrations</Authors>
 		<PackageVersion>4.0.1</PackageVersion>
