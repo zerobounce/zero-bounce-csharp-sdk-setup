@@ -4,8 +4,8 @@
         <TargetFramework>netstandard2.0</TargetFramework>
         <Title>ZeroBounce.SDK</Title>
         <Authors>ZeroBounceIntegrations</Authors>
-		<PackageVersion>4.0.1</PackageVersion>
-		<Version>4.0.1</Version>
+		<PackageVersion>4.1.0</PackageVersion>
+		<Version>4.1.0</Version>
 		<Company>ZeroBounce</Company>
 		<Description>Official ZeroBounce SDK for .NET: email validation and verification, AI scoring, email finder and domain search, bulk files, the Inbox Placement Tester and the Warmup API.</Description>
 		<PackageProjectUrl>https://www.zerobounce.net/</PackageProjectUrl>
