@@ -44,10 +44,24 @@ public static class Program
     private const string Callback = "https://example.com/zerobounce-sdk-live-test";
     private const string Sandbox = "valid@example.com";
 
+    /// <summary>
+    /// How long the bulk delete is retried, and how often. See the delete check
+    /// for the measurements behind the budget.
+    /// </summary>
+    private const int DeleteBudgetSeconds = 720;
+
+    private const int DeletePollSeconds = 10;
+
     private static int _passed;
     private static int _failed;
     private static int _skipped;
     private static readonly List<string> Failures = new();
+
+    /// <summary>
+    /// Bulk jobs this run uploaded but could not delete again. A live run must
+    /// never leave one behind unannounced, so they are printed with the summary.
+    /// </summary>
+    private static readonly List<string> Leaked = new();
 
     private static string Env(string name) => (Environment.GetEnvironmentVariable(name) ?? "").Trim();
 
@@ -155,6 +169,16 @@ public static class Program
             Console.WriteLine("\nFailures:");
             foreach (var line in Failures) Console.WriteLine("  - " + line);
         }
+        if (Leaked.Count > 0)
+        {
+            Console.WriteLine("\n!!! BULK JOBS LEFT ON THE LIVE ACCOUNT -- delete them by hand:");
+            foreach (var id in Leaked)
+            {
+                Console.WriteLine("  !!! file_id " + id);
+            }
+            Console.WriteLine("      GET https://bulkapi.zerobounce.net/v2/deletefile" +
+                              "?api_key=<key>&file_id=<id>");
+        }
         return _failed == 0 ? 0 : 1;
     }
 
@@ -166,13 +190,20 @@ public static class Program
         var zb = Sdk();
         long before = -2;
 
-        Check("GetCredits returns a balance", () =>
+        Check("GetCredits returns a positive balance", () =>
         {
             string? problem = "no response";
             zb.GetCredits(response =>
             {
                 before = response.Credits;
-                problem = null;
+                // LIVE: -1 is what the API answers for an INVALID key, and it
+                // arrives on an HTTP 200. Accepting it would let this check sit
+                // green while every other call in the suite failed on a dead
+                // key, so a usable balance is required instead.
+                problem = response.Credits > 0
+                    ? null
+                    : $"credit balance is {response.Credits}" +
+                      (response.Credits < 0 ? " (-1 means the API key is invalid)" : "");
             }, error => problem = Redact(error));
             return problem;
         });
@@ -372,18 +403,41 @@ public static class Program
         {
             Check("the uploaded validation job is deleted again", () =>
             {
-                // LIVE: a just-accepted job answers "File cannot be found" for
-                // a short while, so the delete is retried rather than leaving
-                // the job behind.
-                var last = "";
-                for (var attempt = 0; attempt < 12; attempt++)
+                // LIVE: a bulk job cannot be deleted until the API has
+                // finished processing it. Until then deletefile answers
+                // "File cannot be found." on an HTTP 200, which says nothing
+                // about the real state -- the job is there, it just is not
+                // deletable yet, so the old fixed 12 x 10s window silently
+                // left paid jobs on the account whenever the queue was slow.
+                //
+                // Measured by uploading a two-row file and polling deletefile
+                // every 5s: it became deletable after 126s, 126s, 128s, 128s
+                // and 130s on a quiet queue, against about 10 minutes on a
+                // busy one. The wait is queue time, so no window is
+                // guaranteed, and file_status is not a usable gate either --
+                // the job reads "Processing", and can read "Complete", while
+                // the delete still refuses. The delete is therefore its own
+                // probe: tried once up front and again every
+                // DeletePollSeconds, so an ordinary run costs the ~2 minutes
+                // the queue really takes rather than the whole budget. The
+                // budget is deliberately generous, because the alternative to
+                // waiting is leaving a job behind on the live account.
+                var deadline = DateTime.UtcNow.AddSeconds(DeleteBudgetSeconds);
+                var last = "no response";
+                var state = "unknown";
+                while (true)
                 {
                     var done = false;
                     zb.DeleteFile(fileId!, _ => done = true, error => last = Redact(error));
                     if (done) return null;
-                    Thread.Sleep(10_000);
+                    if (DateTime.UtcNow >= deadline) break;
+                    zb.FileStatus(fileId!, status => state = status.FileStatus ?? "unknown", _ => { });
+                    Thread.Sleep(DeletePollSeconds * 1000);
                 }
-                return $"could not delete {fileId} after retrying: {last}";
+                // Never give up quietly: the job is still on the live account.
+                Leaked.Add(fileId!);
+                return $"could not delete {fileId} within {DeleteBudgetSeconds}s " +
+                       $"(last file_status: {state}, last error: {last})";
             });
         }
     }
