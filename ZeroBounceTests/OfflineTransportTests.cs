@@ -859,7 +859,7 @@ public partial class OfflineTransportTests
             Assert.That(clients, Is.Not.Empty, holder.GetType().Name);
             foreach (var client in clients)
             {
-                Assert.That(client.Timeout, Is.EqualTo(TimeSpan.FromSeconds(120)), holder.GetType().Name + " timeout");
+                Assert.That(client.Timeout, Is.EqualTo(holder is ZeroBounce ? TransportSupport.DownloadTimeout : TimeSpan.FromSeconds(120)), holder.GetType().Name + " timeout");
             }
         }
         foreach (var holder in new object[] { new HandlerClientProbe(), new ZeroBounceWarmup() })

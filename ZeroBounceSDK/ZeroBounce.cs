@@ -46,10 +46,17 @@ namespace ZeroBounceSDK
 
         private static HttpClient CreateHttpClient()
         {
-            var client = new HttpClient(TransportSupport.CreateHandler()) { Timeout = TimeSpan.FromSeconds(120) };
+            var client = new HttpClient(TransportSupport.CreateHandler()) { Timeout = TransportSupport.DownloadTimeout };
             client.DefaultRequestHeaders.TryAddWithoutValidation("User-Agent", "ZeroBounceSDK/" + PackageVersionValue);
             return client;
         }
+
+        /// <summary>A JSON call: the API budget (120 s in all) inside the longer client timeout that downloads get.</summary>
+        private Task<HttpResponseMessage> ApiGet(string url) =>
+            TransportSupport.WithBudget(ct => _client.GetAsync(url, ct), TransportSupport.ApiTimeout);
+
+        private Task<HttpResponseMessage> ApiPost(string url, HttpContent content) =>
+            TransportSupport.WithBudget(ct => _client.PostAsync(url, content, ct), TransportSupport.ApiTimeout);
 
         private static void RequireHttpsUrl(string url)
         {
@@ -655,7 +662,7 @@ namespace ZeroBounceSDK
                 }
 
                 var url = BulkApiBaseUrl + (scoring ? "/scoring" : "") + "/sendfile";
-                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                var result = await ApiPost(url, content).ConfigureAwait(false);
                 await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
@@ -805,7 +812,7 @@ namespace ZeroBounceSDK
             Deliver(() =>
             {
                 LastApiError = error;
-                failureCallback(message);
+                failureCallback?.Invoke(message);
             });
         }
 
@@ -962,7 +969,7 @@ namespace ZeroBounceSDK
         {
             try
             {
-                var result = await _client.GetAsync(url).ConfigureAwait(false);
+                var result = await ApiGet(url).ConfigureAwait(false);
                 await DispatchJson(result, successCallback, failureCallback, greylistIsResult).ConfigureAwait(false);
             }
             catch (Exception e)
@@ -976,7 +983,7 @@ namespace ZeroBounceSDK
             var status = 0;
             try
             {
-                var result = await _client.GetAsync(url).ConfigureAwait(false);
+                var result = await ApiGet(url).ConfigureAwait(false);
                 status = (int)result.StatusCode;
                 var body = await ReadUsableBody(result, failureCallback).ConfigureAwait(false);
                 if (body == null)
@@ -1012,7 +1019,7 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new StringContent(json, Encoding.UTF8, "application/json");
-                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                var result = await ApiPost(url, content).ConfigureAwait(false);
                 await DispatchJson(result, successCallback, failureCallback).ConfigureAwait(false);
             }
             catch (Exception e)
@@ -1028,7 +1035,7 @@ namespace ZeroBounceSDK
             try
             {
                 var content = new FormUrlEncodedContent(form);
-                var result = await _client.PostAsync(url, content).ConfigureAwait(false);
+                var result = await ApiPost(url, content).ConfigureAwait(false);
                 await DispatchJson(result, successCallback, failureCallback, greylistIsResult).ConfigureAwait(false);
             }
             catch (Exception e)
@@ -1157,7 +1164,7 @@ namespace ZeroBounceSDK
         }
 
         /// <summary>Opens the temporary file a download is written to. Tests replace it with one that fails part-way.</summary>
-        internal static Func<string, Stream> OpenDownloadFile = path => new FileStream(path, FileMode.CreateNew, FileAccess.Write);
+        internal static Func<string, Stream> OpenDownloadFile = path => new FileStream(path, FileMode.Open, FileAccess.Write);
 
         /// <summary>
         /// Writes a download to a temporary file in the target's directory and
@@ -1170,15 +1177,22 @@ namespace ZeroBounceSDK
         {
             var target = TransportSupport.ResolveLink(Path.GetFullPath(localDownloadPath));
             var dirPath = Path.GetDirectoryName(target);
-            if (!string.IsNullOrEmpty(dirPath)) Directory.CreateDirectory(dirPath);
+            // A link's target folder is never created (it is refused before the request).
+            var viaLink = !string.Equals(target, Path.GetFullPath(localDownloadPath), StringComparison.Ordinal);
+            if (!string.IsNullOrEmpty(dirPath) && !(viaLink && !Directory.Exists(dirPath))) Directory.CreateDirectory(dirPath);
             var temp = Path.Combine(dirPath ?? "", "." + Path.GetFileName(target) + "." + Guid.NewGuid().ToString("N") + ".part");
             try
             {
+                // Create it empty and restrict it before any content goes in: the
+                // target's mode when there is one, else owner-only.
+                using (new FileStream(temp, FileMode.CreateNew, FileAccess.Write)) { }
+                var mode = File.Exists(target) ? TransportSupport.GetUnixMode(target) : null;
+                if (mode != null) TransportSupport.SetUnixMode(temp, mode);
+                else TransportSupport.SetOwnerOnly(temp);
                 using (var stream = OpenDownloadFile(temp))
                     stream.Write(bytes, 0, bytes.Length);
                 if (File.Exists(target))
                 {
-                    TransportSupport.SetUnixMode(temp, TransportSupport.GetUnixMode(target));
                     File.Replace(temp, target, null);
                 }
                 else

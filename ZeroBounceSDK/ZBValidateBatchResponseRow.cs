@@ -12,7 +12,7 @@ namespace ZeroBounceSDK
         [JsonProperty("sub_status")] [JsonConverter(typeof(ZBValidateSubStatusConverter))]
         public ZBValidateSubStatus SubStatus { get; set; }
 
-        [JsonProperty("free_email")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool FreeEmail { get; set; }
+        [JsonProperty("free_email")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool? FreeEmail { get; set; }
 
         [JsonProperty("did_you_mean")] public string DidYouMean { get; set; }
 

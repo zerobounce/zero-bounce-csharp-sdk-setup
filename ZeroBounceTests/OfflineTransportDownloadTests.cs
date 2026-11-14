@@ -193,6 +193,14 @@ public class OfflineTransportDownloadTests
         return -1;
     }
 
+    /// <summary>
+    /// A connect that hangs fails through the failure callback with status 0 well
+    /// before the request timeout. The exception type differs by OS (Linux:
+    /// TaskCanceledException from the connect timeout; macOS: the whole backlog
+    /// is refused at once), so only the outcome is asserted; the configured
+    /// timeout itself is pinned on the real clients' handlers in
+    /// <see cref="TheRealClientsConnectTimeoutAndHandlerAreSetUp"/>.
+    /// </summary>
     [Test]
     public void AConnectThatNeverCompletesFailsAtTheConnectTimeoutNotTheRequestTimeout()
     {
@@ -213,7 +221,10 @@ public class OfflineTransportDownloadTests
             TransportSupport.ConnectTimeout = TimeSpan.FromSeconds(1);
             using var http = new HttpClient(TransportSupport.CreateHandler()) { Timeout = TimeSpan.FromSeconds(60) };
             var watch = System.Diagnostics.Stopwatch.StartNew();
-            Assert.ThrowsAsync<HttpRequestException>(async () => await http.GetAsync("http://127.0.0.1:" + port + "/"));
+            var failed = false;
+            try { http.GetAsync("http://127.0.0.1:" + port + "/").GetAwaiter().GetResult(); }
+            catch (Exception e) when (e is HttpRequestException || e is OperationCanceledException) { failed = true; }
+            Assert.That(failed, Is.True, "the connect must fail, not succeed");
             Assert.That(watch.Elapsed, Is.LessThan(TimeSpan.FromSeconds(15)));
         }
         finally

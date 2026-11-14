@@ -582,13 +582,13 @@ namespace ZeroBounceSDK
         private void Fail(Action<string> fail, string message, int statusCode)
         {
             LastApiError = new ZBApiError(message, statusCode);
-            fail(message);
+            fail?.Invoke(message);
         }
 
         private void Succeed<T>(Action<T> ok, T value)
         {
             LastApiError = null;
-            ok(value);
+            ok?.Invoke(value);
         }
 
         private bool NotReady(Action<string> fail)

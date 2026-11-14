@@ -1,8 +1,9 @@
 name: Dependabot security auto-merge
 
-# Dependabot opens security updates only here: .github/dependabot.yml turns version updates off
-# (open-pull-requests-limit: 0), and every group in it is a "-security" group that applies to
-# security-updates.
+# Dependabot security updates are grouped (every group in .github/dependabot.yml is a "-security"
+# group that applies to security-updates). Version updates are on only for the docker and
+# github-actions ecosystems; those pull requests are in no security group, so this workflow
+# comments and leaves them for a person.
 #
 # A grouped security update that is a patch or minor change is approved, then merged by this
 # workflow once every other workflow run on the pull request's head commit has finished

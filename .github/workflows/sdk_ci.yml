@@ -52,15 +52,16 @@ jobs:
         run: dotnet restore
 
       - name: Run tests
-        run: dotnet test ZeroBounceTests/ZeroBounceTests.csproj --no-restore -v normal
+        run: dotnet test ZeroBounceTests/ZeroBounceTests.csproj --no-restore -warnaserror -v normal
 
-      # The WPF sample targets Windows; EnableWindowsTargeting lets it compile here.
+      # The WPF sample targets Windows; its project sets EnableWindowsTargeting, so it compiles here.
+      # Warnings are errors on every build step.
       - name: Build the sample
-        run: dotnet build ZeroBounceSample/ZeroBounceSample.csproj --no-restore
+        run: dotnet build ZeroBounceSample/ZeroBounceSample.csproj --no-restore -warnaserror
 
       - name: Check the package
         run: |
-          dotnet build ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-restore
+          dotnet build ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-restore -warnaserror
           dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
           NUPKG=ZeroBounceSDK/bin/Release/ZeroBounce.SDK.$(sed -n 's:.*<PackageVersion>\(.*\)</PackageVersion>.*:\1:p' ZeroBounceSDK/ZeroBounceSDK.csproj).nupkg
           unzip -l "$NUPKG"

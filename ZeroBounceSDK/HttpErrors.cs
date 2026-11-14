@@ -58,8 +58,29 @@ namespace ZeroBounceSDK
                 foreach (var escape in escapes)
                     forms.Add(escape(escaped));
             }
+            // A server that echoes a key into an HTML page writes <c>' " &lt; &gt; &amp;</c> as entities.
+            foreach (var form in forms.ToList())
+            {
+                foreach (var entities in HtmlEntitySpellings)
+                {
+                    var spelled = form;
+                    foreach (var pair in entities)
+                        spelled = spelled.Replace(pair[0], pair[1]);
+                    forms.Add(spelled);
+                }
+            }
             return forms.Where(form => form.Length > 0).Distinct().OrderByDescending(form => form.Length).ToList();
         }
+
+        /// <summary>Named, decimal and hexadecimal entity spellings of the characters an HTML page escapes (the ampersand first).</summary>
+        private static readonly string[][][] HtmlEntitySpellings =
+        {
+            new[] { new[] { "&", "&amp;" }, new[] { "'", "&apos;" }, new[] { "\"", "&quot;" }, new[] { "<", "&lt;" }, new[] { ">", "&gt;" } },
+            new[] { new[] { "&", "&#38;" }, new[] { "'", "&#39;" }, new[] { "\"", "&#34;" }, new[] { "<", "&#60;" }, new[] { ">", "&#62;" } },
+            new[] { new[] { "&", "&#x26;" }, new[] { "'", "&#x27;" }, new[] { "\"", "&#x22;" }, new[] { "<", "&#x3c;" }, new[] { ">", "&#x3e;" } },
+            new[] { new[] { "&", "&amp;" }, new[] { "'", "&#39;" }, new[] { "\"", "&quot;" }, new[] { "<", "&lt;" }, new[] { ">", "&gt;" } },
+            new[] { new[] { "&", "&amp;" }, new[] { "'", "&#x27;" }, new[] { "\"", "&quot;" }, new[] { "<", "&lt;" }, new[] { ">", "&gt;" } },
+        };
 
         /// <summary>What a message becomes when a secret is left in it in a spelling <see cref="RedactSecrets"/> cannot replace.</summary>
         public const string CredentialOmitted = "The response body was omitted because it contained a credential.";
@@ -135,10 +156,15 @@ namespace ZeroBounceSDK
         public static bool IsAllowedBaseUrl(string url)
         {
             if (string.IsNullOrWhiteSpace(url)) return false;
+            // Whitespace or a control character anywhere (a trailing tab or newline included).
+            foreach (var c in url)
+            {
+                if (char.IsWhiteSpace(c) || char.IsControl(c)) return false;
+            }
             Uri parsed;
             if (!Uri.TryCreate(url, UriKind.Absolute, out parsed)) return false;
             return parsed.Scheme == Uri.UriSchemeHttps && !string.IsNullOrEmpty(parsed.Host) && parsed.Port > 0
-                   && parsed.Authority.IndexOf(' ') < 0 && url.IndexOf(' ') < 0;
+                   && string.IsNullOrEmpty(parsed.UserInfo) && parsed.Authority.IndexOf('@') < 0;
         }
 
         /// <summary>Whether <paramref name="text"/>, or any view of it decoded up to four times, holds one of the secrets.</summary>
@@ -155,7 +181,7 @@ namespace ZeroBounceSDK
                 var next = new List<string>();
                 foreach (var view in layer)
                 {
-                    foreach (var decoded in new[] { PercentDecoded(view, false), PercentDecoded(view, true), JsonUnescaped(view) })
+                    foreach (var decoded in new[] { PercentDecoded(view, false), PercentDecoded(view, true), JsonUnescaped(view), WebUtility.HtmlDecode(view) })
                     {
                         if (seen.Add(decoded)) next.Add(decoded);
                     }
@@ -466,10 +492,20 @@ namespace ZeroBounceSDK
             {
                 var parsed = JObject.Parse(trimmed);
                 if (!parsed.TryGetValue("success", out var value)) return false;
-                if (value.Type == JTokenType.Boolean) return !value.Value<bool>();
-                return value.Type == JTokenType.String &&
-                       string.Equals(value.Value<string>()?.Trim(), "false",
-                                     StringComparison.OrdinalIgnoreCase);
+                // The values ZBStrictBoolConverter reads as false (false, "false", "False", 0, "0"),
+                // as Java's StrictBooleanAdapter does; any other value is left for the decoder to refuse.
+                switch (value.Type)
+                {
+                    case JTokenType.Boolean:
+                        return !value.Value<bool>();
+                    case JTokenType.Integer:
+                        return ((JValue)value).Value is long number && number == 0;
+                    case JTokenType.String:
+                        var text = value.Value<string>();
+                        return string.Equals(text, "false", StringComparison.OrdinalIgnoreCase) || text == "0";
+                    default:
+                        return false;
+                }
             }
             catch (JsonException)
             {

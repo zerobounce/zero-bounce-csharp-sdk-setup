@@ -170,24 +170,98 @@ namespace ZeroBounceSDK
                 throw new NotSupportedException();
         }
 
+        private static readonly Regex DashDate = new Regex(
+            @"^([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2})\.([0-9]{3})$", RegexOptions.CultureInvariant);
+
+        private static readonly Regex UsDate = new Regex(
+            @"^([0-9]{1,2})/([0-9]{1,2})/([0-9]{4}) ([0-9]{1,2}):([0-9]{2}):([0-9]{2}) (AM|PM)$",
+            RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+
+        private static readonly Regex IsoDate = new Regex(
+            @"^([0-9]{4})-([0-9]{2})-([0-9]{2})T([0-9]{2}):([0-9]{2}):([0-9]{2})(?:\.([0-9]{1,9}))?"
+            + @"(Z|[+-][0-9]{2}(?::[0-9]{2}|[0-9]{2})?)(?:\[[A-Za-z][A-Za-z0-9_/+~.-]*\])?$", RegexOptions.CultureInvariant);
+
         /// <summary>
-        /// A <see cref="DateTime"/> member: null reads as no date (<c>default</c>), the empty
-        /// value (standard.md section 3). Any other value is read as the default reader reads it.
+        /// Reads a date the way Java 3.1.0's GsonDateDeserializer does, and no other way:
+        /// <c>yyyy-MM-dd HH:mm:ss.SSS</c> and <c>M/d/yyyy h:mm:ss a</c> (AM/PM in any case)
+        /// with no zone, read in the system zone (a <see cref="DateTimeKind.Local"/> result),
+        /// and ISO 8601 <c>yyyy-MM-ddTHH:mm:ss[.f to 9 digits]</c> with an offset written as
+        /// <c>Z</c>, <c>+hh:mm</c>, <c>+hhmm</c> or <c>+hh</c> and an optional <c>[Region/Id]</c>
+        /// suffix (a <see cref="DateTimeKind.Utc"/> result). A field out of range (month 13,
+        /// 30 February, hour 24) fails, as does any other text. Returns false when unreadable.
+        /// </summary>
+        internal static bool TryParseDate(string text, out DateTime result)
+        {
+            result = default(DateTime);
+            try
+            {
+                var m = DashDate.Match(text);
+                if (m.Success)
+                {
+                    result = new DateTime(Int(m, 1), Int(m, 2), Int(m, 3), Int(m, 4), Int(m, 5), Int(m, 6), Int(m, 7), DateTimeKind.Local);
+                    return true;
+                }
+                m = UsDate.Match(text);
+                if (m.Success)
+                {
+                    var hour = Int(m, 4);
+                    if (hour < 1 || hour > 12) return false;
+                    var pm = string.Equals(m.Groups[7].Value, "PM", StringComparison.OrdinalIgnoreCase);
+                    result = new DateTime(Int(m, 3), Int(m, 1), Int(m, 2), hour % 12 + (pm ? 12 : 0), Int(m, 5), Int(m, 6), DateTimeKind.Local);
+                    return true;
+                }
+                m = IsoDate.Match(text);
+                if (m.Success)
+                {
+                    var local = new DateTime(Int(m, 1), Int(m, 2), Int(m, 3), Int(m, 4), Int(m, 5), Int(m, 6), DateTimeKind.Unspecified);
+                    if (m.Groups[7].Success)
+                    {
+                        var digits = (m.Groups[7].Value + "000000000").Substring(0, 7);
+                        local = local.AddTicks(long.Parse(digits, CultureInfo.InvariantCulture));
+                    }
+                    var offset = TimeSpan.Zero;
+                    var zone = m.Groups[8].Value;
+                    if (zone != "Z")
+                    {
+                        var digitsOnly = zone.Substring(1).Replace(":", "");
+                        var hours = int.Parse(digitsOnly.Substring(0, 2), CultureInfo.InvariantCulture);
+                        var minutes = digitsOnly.Length > 2 ? int.Parse(digitsOnly.Substring(2), CultureInfo.InvariantCulture) : 0;
+                        if (hours > 18 || minutes > 59 || (hours == 18 && minutes > 0)) return false;
+                        offset = new TimeSpan(hours, minutes, 0);
+                        if (zone[0] == '-') offset = offset.Negate();
+                    }
+                    result = DateTime.SpecifyKind(local - offset, DateTimeKind.Utc);
+                    return true;
+                }
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return false;
+            }
+            return false;
+        }
+
+        private static int Int(Match match, int group) => int.Parse(match.Groups[group].Value, CultureInfo.InvariantCulture);
+
+        /// <summary>
+        /// A <see cref="DateTime"/> or <c>DateTime?</c> member (Java 3.1.0's GsonDateDeserializer):
+        /// null, a missing field and a blank string read as no date (null), and text in one of
+        /// the formats of <see cref="TryParseDate"/> as that date. Anything else is an error.
         /// </summary>
         internal sealed class NullAsDefaultDateTimeConverter : JsonConverter
         {
-            public override bool CanConvert(Type objectType) => objectType == typeof(DateTime);
+            public override bool CanConvert(Type objectType) => objectType == typeof(DateTime) || objectType == typeof(DateTime?);
 
             public override bool CanWrite => false;
 
             public override object ReadJson(JsonReader reader, Type objectType, object existingValue, JsonSerializer serializer)
             {
                 if (reader.TokenType == JsonToken.Null || reader.TokenType == JsonToken.Undefined)
-                    return default(DateTime);
-                if (reader.TokenType == JsonToken.Date && reader.Value is DateTime date)
-                    return date;
+                    return objectType == typeof(DateTime?) ? null : (object)default(DateTime);
                 var text = reader.TokenType == JsonToken.String ? (string)reader.Value : null;
-                if (text != null && DateTime.TryParse(text, CultureInfo.InvariantCulture, DateTimeStyles.None, out var parsed))
+                if (text != null && text.Trim().Length == 0)
+                    return objectType == typeof(DateTime?) ? null : (object)default(DateTime);
+                if (text != null && TryParseDate(text, out var parsed))
                     return parsed;
                 var found = Kind(reader.TokenType);
                 var field = FieldName(reader.Path);

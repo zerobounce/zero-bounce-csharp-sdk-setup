@@ -110,7 +110,7 @@ jobs:
           dotnet pack ZeroBounceSDK/ZeroBounceSDK.csproj -c Release --no-build
 
       - name: NuGet login (trusted publishing)
-        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: login
         with:
           user: ${{ secrets.NUGET_USER || 'ZeroBounceIntegrations' }}

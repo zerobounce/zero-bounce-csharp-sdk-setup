@@ -3,7 +3,10 @@ using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ZeroBounceSDK
 {
@@ -18,16 +21,83 @@ namespace ZeroBounceSDK
         internal static TimeSpan ConnectTimeout = TimeSpan.FromSeconds(30);
 
         /// <summary>
+        /// The time one JSON API call may take in all, from sending to the last
+        /// byte of the answer (the read budget of the Java and Android SDKs).
+        /// </summary>
+        internal static TimeSpan ApiTimeout = TimeSpan.FromSeconds(120);
+
+        /// <summary>
+        /// The time a file download (or the bulk client's HttpClient.Timeout as a
+        /// whole) may take: much longer than an API call, because a result file
+        /// can be large and the platform has no per-read timeout to set.
+        /// </summary>
+        internal static TimeSpan DownloadTimeout = TimeSpan.FromMinutes(10);
+
+        /// <summary>
+        /// Runs a request with its own time budget, shorter than the client's
+        /// HttpClient.Timeout. Failing at the budget throws a TimeoutException.
+        /// </summary>
+        internal static async Task<HttpResponseMessage> WithBudget(Func<CancellationToken, Task<HttpResponseMessage>> send, TimeSpan budget)
+        {
+            using (var cts = new CancellationTokenSource(budget))
+            {
+                try
+                {
+                    return await send(cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (cts.IsCancellationRequested)
+                {
+                    throw new TimeoutException("The request was canceled due to the configured request timeout of "
+                        + (int)budget.TotalSeconds + " seconds elapsing.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Whether the platform already has its own native handler that must not
+        /// be replaced (.NET for iOS, Android, Mac Catalyst, tvOS; the browser):
+        /// forcing SocketsHttpHandler there changes TLS trust and proxy behaviour.
+        /// Tests replace it to exercise the fallback.
+        /// </summary>
+        internal static Func<bool> HasNativeHandler = DetectNativeHandler;
+
+        private static bool DetectNativeHandler()
+        {
+            try
+            {
+                var os = Type.GetType("System.OperatingSystem", false);
+                if (os != null)
+                {
+                    foreach (var name in new[] { "IsIOS", "IsAndroid", "IsMacCatalyst", "IsTvOS", "IsBrowser" })
+                    {
+                        var m = os.GetMethod(name, Type.EmptyTypes);
+                        if (m != null && m.Invoke(null, null) is bool b && b) return true;
+                    }
+                }
+                foreach (var name in new[] { "IOS", "ANDROID", "MACCATALYST", "TVOS", "BROWSER" })
+                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Create(name))) return true;
+            }
+            catch (Exception)
+            {
+                // Unknown: treat as a desktop or server platform.
+            }
+            return false;
+        }
+
+        /// <summary>
         /// The handler every client uses: no redirects, and a connect timeout where
         /// the platform has one. On .NET Core / .NET 5+ that is
         /// SocketsHttpHandler.ConnectTimeout, found by reflection because the
         /// library targets netstandard2.0. On .NET Framework there is no connect
-        /// timeout to set; only the 120 s HttpClient.Timeout applies there.
+        /// timeout to set; only the HttpClient.Timeout applies there. On the
+        /// mobile platforms (see <see cref="HasNativeHandler"/>) the native
+        /// HttpClientHandler stays, with no redirects.
         /// </summary>
         internal static HttpMessageHandler CreateHandler()
         {
             try
             {
+                if (HasNativeHandler()) return new HttpClientHandler { AllowAutoRedirect = false };
                 var type = Type.GetType("System.Net.Http.SocketsHttpHandler, System.Net.Http", false);
                 if (type != null)
                 {
@@ -85,6 +155,17 @@ namespace ZeroBounceSDK
                 var full = Path.GetFullPath(path);
                 if (Directory.Exists(full))
                     return "local_download_path is an existing directory; give a file path";
+                // A symbolic link that points nowhere (or into a folder that does
+                // not exist) would have the write create folders at its target.
+                var resolved = ResolveLink(full);
+                if (!string.Equals(resolved, full, StringComparison.Ordinal))
+                {
+                    var parent = Path.GetDirectoryName(resolved);
+                    if (Directory.Exists(resolved))
+                        return "local_download_path is a link to a directory; give a file path";
+                    if (!string.IsNullOrEmpty(parent) && !Directory.Exists(parent))
+                        return "local_download_path is a link whose target folder does not exist";
+                }
             }
             catch (Exception e) when (e is ArgumentException || e is NotSupportedException || e is PathTooLongException)
             {
@@ -123,6 +204,21 @@ namespace ZeroBounceSDK
             catch (Exception)
             {
                 return null;
+            }
+        }
+
+        /// <summary>Best effort: gives <paramref name="path"/> owner read and write only (0600).</summary>
+        internal static void SetOwnerOnly(string path)
+        {
+            try
+            {
+                var type = Type.GetType("System.IO.UnixFileMode", false);
+                if (type == null) return;
+                SetUnixMode(path, Enum.ToObject(type, 384));
+            }
+            catch (Exception)
+            {
+                // Best effort.
             }
         }
 

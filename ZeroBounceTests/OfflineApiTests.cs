@@ -997,7 +997,7 @@ public partial class OfflineApiTests
         var userAgent = probe.Http.DefaultRequestHeaders.UserAgent.ToString();
         Assert.That(userAgent, Is.EqualTo("ZeroBounceSDK/" + packageVersion));
         Assert.That(packageVersion, Is.EqualTo("4.0.1"));
-        Assert.That(probe.Http.Timeout, Is.EqualTo(TimeSpan.FromSeconds(120)));
+        Assert.That(probe.Http.Timeout, Is.EqualTo(TransportSupport.DownloadTimeout));
         Assert.That(AllowsRedirects(probe.Http), Is.False);
     }
 

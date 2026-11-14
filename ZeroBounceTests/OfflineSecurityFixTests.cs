@@ -151,4 +151,26 @@ public class OfflineSecurityFixTests
         Assert.That(warmupCtor == null || !(warmupCtor.IsPublic || warmupCtor.IsFamily), Is.True);
         Assert.That(typeof(ZeroBounceWarmup).GetConstructor(Type.EmptyTypes), Is.Not.Null);
     }
+
+    [TestCase("https://user:pw@a.example")]
+    [TestCase("https://user@a.example/v2")]
+    [TestCase("https://:pw@a.example")]
+    [TestCase("https://a.example\t")]
+    [TestCase("https://a.example\n")]
+    [TestCase("https://a.example/ v2")]
+    [TestCase(" https://a.example")]
+    [TestCase("https://a.example/ ")]
+    [TestCase("https://a.example/\u0001")]
+    public void BaseUrlsWithUserInfoOrWhitespaceAreRefusedOnAllEntryPoints(string bad)
+    {
+        Assert.That(HttpErrors.IsAllowedBaseUrl(bad), Is.False);
+        var main = new MainClient(new Echo(_ => "x"));
+        Assert.Throws<ZBClientException>(() => main.Initialize("dummy-key", bad));
+        Assert.Throws<ZBClientException>(() => main.SetListEvaluatorBaseUrl(bad));
+        Assert.Throws<ZBClientException>(() => main.SetInboxPlacementBaseUrl(bad));
+        var warmup = new ZeroBounceWarmup(new Echo(_ => "x"));
+        warmup.Initialize("dummy-key", bad);
+        Assert.That(Failure(fail => warmup.GetSeeds(_ => { }, fail)), Is.EqualTo("base_url must be an https:// URL"));
+        Assert.That(HttpErrors.IsAllowedBaseUrl("https://a.example:8443/v2/"), Is.True);
+    }
 }

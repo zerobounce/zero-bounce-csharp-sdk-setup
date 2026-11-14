@@ -44,11 +44,11 @@ namespace ZeroBounceSDK
 
         [JsonProperty("active_first_seen")] public string ActiveFirstSeen;
 
-        //[true/false] If the email comes from a free provider.
-        [JsonProperty("free_email")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool FreeEmail;
+        //[true/false or null] If the email comes from a free provider; null when the API sent none.
+        [JsonProperty("free_email")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool? FreeEmail;
 
-        //[true/false] Does the domain have an MX record.
-        [JsonProperty("mx_found")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool MxFound;
+        //[true/false or null] Does the domain have an MX record; null when the API sent none.
+        [JsonProperty("mx_found")] [JsonConverter(typeof(ZBStrictBoolConverter))] public bool? MxFound;
 
         //The preferred MX record of the domain
         [JsonProperty("mx_record")] public string MxRecord;
@@ -80,8 +80,8 @@ namespace ZeroBounceSDK
         //The country of the IP passed in.
         [JsonProperty("country")] public string Country;
 
-        //The UTC time the email was validated.
-        [JsonProperty("processed_at")] public DateTime ProcessedAt;
+        //The time the email was validated; null when the API sent none.
+        [JsonProperty("processed_at")] public DateTime? ProcessedAt;
 
         [JsonProperty("error")] public string Error;
 

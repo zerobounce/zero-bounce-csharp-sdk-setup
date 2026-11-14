@@ -1,4 +1,6 @@
-# Dependabot: security updates only (no version-update PRs).
+# Dependabot: security updates for every ecosystem (grouped, auto-merged); version-update PRs only for
+# the docker and github-actions ecosystems, so the pinned base-image digest and action SHAs are bumped
+# (those PRs are left for a person to review and merge).
 # Grouped security PRs open weekly on Tuesday morning (Europe/Bucharest).
 # Auto-merge: .github/workflows/dependabot-auto-merge.yml (on PR + Tuesday cron).
 # https://docs.github.com/en/code-security/dependabot/dependabot-security-updates
@@ -63,7 +65,7 @@ updates:
       day: tuesday
       time: "06:00"
       timezone: Europe/Bucharest
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 2
     labels:
       - "dependabot-security"
       - "github dependencies"
@@ -80,7 +82,7 @@ updates:
       day: tuesday
       time: "06:00"
       timezone: Europe/Bucharest
-    open-pull-requests-limit: 0
+    open-pull-requests-limit: 2
     labels:
       - "dependabot-security"
       - "docker dependencies"

@@ -36,9 +36,9 @@ ZEROBOUNCE_LIVE_CHANGES=1 dotnet run --project ZeroBounceLiveApi
 Keys come from the environment only. Never write one into a file, a commit, a
 log, a fixture or a message.
 
-CI (`.github/workflows/sdk_ci.yml`) restores, runs `dotnet test ZeroBounceTests/ZeroBounceTests.csproj`, builds the WPF sample (`ZeroBounceSample`, which references the SDK project; `EnableWindowsTargeting` lets it compile on Linux), and packs the SDK to check that the `.nupkg` carries the XML docs and a `.snupkg` sits next to it. That build is the typecheck. There is no separate lint step.
+CI (`.github/workflows/sdk_ci.yml`) restores, runs `dotnet test ZeroBounceTests/ZeroBounceTests.csproj`, builds the WPF sample (`ZeroBounceSample`, which references the SDK project; `EnableWindowsTargeting` lets it compile on Linux), with `-warnaserror` on the test, sample and Release SDK builds, and packs the SDK to check that the `.nupkg` carries the XML docs and a `.snupkg` sits next to it. That build is the typecheck. There is no separate lint step.
 
-Pack the way the workflows do, `dotnet build -c Release` then `dotnet pack -c Release --no-build`: with `GeneratePackageOnBuild`, a plain `dotnet pack` fails with NU5026.
+`dotnet pack` works on its own (`GeneratePackageOnBuild` is gone, so NU5026 no longer applies). The workflows still run `dotnet build -c Release` then `dotnet pack -c Release --no-build`, which gives the same package.
 
 Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It tests, packs `ZeroBounceSDK.csproj`, pushes the `.nupkg` and its `.snupkg` symbols package (SourceLink to this repository) to NuGet, and creates the GitHub release.
 
