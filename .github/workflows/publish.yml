@@ -113,16 +113,16 @@ jobs:
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
         id: login
         with:
-          user: ${{ secrets.NUGET_USER || 'ZeroBounceIntegrations' }}
+          user: ZeroBounceIntegrations
 
       - name: Push to NuGet
+        # Trusted publishing only: the key is the short-lived one NuGet/login exchanged for this
+        # job's OIDC token. No NuGet API key is stored in the repository.
         env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-          OIDC_NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
+          KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
-          KEY="${NUGET_API_KEY:-$OIDC_NUGET_API_KEY}"
           if [ -z "$KEY" ]; then
-            echo "Error: No NuGet API key. Configure trusted publishing or add NUGET_API_KEY secret."
+            echo "Error: NuGet/login returned no API key. Check the trusted publishing policy on nuget.org."
             exit 1
           fi
           NUPKG=$(ls -t ZeroBounceSDK/bin/Release/ZeroBounce.SDK.*.nupkg 2>/dev/null | head -1)
