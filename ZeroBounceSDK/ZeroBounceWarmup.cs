@@ -31,7 +31,7 @@ namespace ZeroBounceSDK
     /// status when the most recent call failed, and is null after a success.
     /// </para>
     /// </summary>
-    public class ZeroBounceWarmup
+    public class ZeroBounceWarmup : IZeroBounceWarmup
     {
         public const string DefaultBaseUrl = "https://warmup-api.zerobounce.net";
         private const string BasePath = "/api/v1/warmup";

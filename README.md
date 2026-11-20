@@ -642,6 +642,39 @@ warmup.CheckDomainDmarc("sender@example.com", null, ok, error);
 
 Every documented empty success (204, or an empty 200) arrives as a `null` payload, and a payload that is not a JSON object — `/seeds` is an array, `/seed-count` a bare number — arrives as that `JToken`. `warmup.LastApiError` describes the most recent call the same way as on `ZeroBounce`: `null` after a success, otherwise the short message the failure callback was given plus the HTTP status. Nothing is stored by `TestSmtpConfiguration`, and the credentials you pass it are masked out of any error it raises.
 
+## Testing code that uses the SDK
+
+`ZeroBounce` implements `IZeroBounce` and `ZeroBounceWarmup` implements `IZeroBounceWarmup`. Each interface has every API call of its client, and `LastApiError`, with the same signatures. Take the interface where your code needs a client, pass the real one in, and mock the interface in your tests (Moq, NSubstitute or a fake of your own):
+
+```csharp
+public class SignupChecker
+{
+    private readonly IZeroBounce _zeroBounce;
+    public SignupChecker(IZeroBounce zeroBounce) => _zeroBounce = zeroBounce;
+
+    public bool IsDeliverable(string email)
+    {
+        var valid = false;
+        _zeroBounce.Validate(email, "", r => valid = r.Status == ZBValidateStatus.Valid, _ => { });
+        return valid;
+    }
+}
+
+// Production
+ZeroBounce.Instance.Initialize("<YOUR_API_KEY>");
+var checker = new SignupChecker(ZeroBounce.Instance);
+
+// Test, with Moq
+var zb = new Mock<IZeroBounce>();
+zb.Setup(z => z.Validate(It.IsAny<string>(), It.IsAny<string>(),
+        It.IsAny<Action<ZBValidateResponse>>(), It.IsAny<Action<string>>()))
+    .Callback<string, string, Action<ZBValidateResponse>, Action<string>>(
+        (_, _, ok, _) => ok(new ZBValidateResponse { Status = ZBValidateStatus.Valid }));
+Assert.That(new SignupChecker(zb.Object).IsDeliverable("user@example.com"), Is.True);
+```
+
+Setup is not on the interfaces: `ZeroBounce.Instance`, the `Initialize` overloads, `SetListEvaluatorBaseUrl` / `SetInboxPlacementBaseUrl` and the `ZeroBounceWarmup` constructor stay on the classes, so code that receives a client never handles the key. The interfaces are meant to be mocked, not implemented: new API methods are added to them in minor releases, so a class of your own that implements one may stop compiling after an upgrade.
+
 ## Live API suite
 
 `dotnet build` and `dotnet test` at the repo root never touch the network: the live suite is its own project and is not in the solution, so CI does not even build it. It needs real keys, which come from the environment and are never written anywhere:
