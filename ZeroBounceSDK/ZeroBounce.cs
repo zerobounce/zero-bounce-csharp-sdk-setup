@@ -12,7 +12,7 @@ using Newtonsoft.Json;
 
 namespace ZeroBounceSDK
 {
-    public partial class ZeroBounce
+    public partial class ZeroBounce : IZeroBounce
     {
         internal static readonly ZeroBounce _instance = new ZeroBounce();
 

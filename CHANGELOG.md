@@ -5,6 +5,12 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `IZeroBounce`, implemented by `ZeroBounce`, and `IZeroBounceWarmup`, implemented by `ZeroBounceWarmup`, so code that uses the SDK can be tested with a mock (Moq, NSubstitute or a fake). Each has every public API method of its client and `LastApiError`, with the same signatures and docs. Setup stays on the classes: `Instance`, `Initialize`, `SetListEvaluatorBaseUrl`, `SetInboxPlacementBaseUrl` and the constructors. The interfaces gain methods in minor releases, whenever the clients do, so they are meant to be mocked, not implemented in your own classes. The client methods stay non-virtual. See "Testing code that uses the SDK" in the README.
+
 ## [4.1.0] - 2026-11-14
 
 ### Added
@@ -250,6 +256,7 @@ Published to NuGet on 2025-11-12 with no git tag and no commit that names the ve
 
 The git tags v2.0.10, v2.0.11, v2.0.13, v2.1.1 and v2.1.3 were never published to NuGet and have no entry above (NuGet goes 2.0.12, 2.1.0, 2.1.2, 2.1.4).
 
+[Unreleased]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v4.1.0...HEAD
 [4.1.0]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v4.0.1...v4.1.0
 [4.0.1]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v4.0.0...v4.0.1
 [4.0.0]: https://github.com/zerobounce/zero-bounce-csharp-sdk-setup/compare/v3.0.0...v4.0.0

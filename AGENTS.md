@@ -11,6 +11,7 @@ Guidance for AI coding agents working in this repository.
 - `ZeroBounceSDK/ZeroBounce.cs`: validation, bulk file, credits, activity, scoring.
 - `ZeroBounceSDK/ZeroBounce.Priority3.cs`: bulk email finder, domain search, list evaluator, filters, and the S3 / SFTP bulk jobs. The six file jobs share `BulkFileJobOptions` and `_BulkRootFileJob`.
 - `ZeroBounceSDK/ZeroBounce.InboxPlacement.cs`: the Inbox Placement Tester. The API key goes in an `Authorization: Bearer` header, bodies are camelCase JSON, and it uses PUT and DELETE as well as GET and POST.
+- `ZeroBounceSDK/IZeroBounce.cs`, `ZeroBounceSDK/IZeroBounceWarmup.cs`: the public API of each client as an interface, so callers can mock it. `ZeroBounceTests/ClientInterfaceTests.cs` fails when a class and its interface drift apart.
 - `ZeroBounceSDK/HttpErrors.cs`: turns HTTP failures, HTML pages, and empty or non-JSON bodies into a short failure-callback message.
 - `ZeroBounceTests/ZeroBounceUnitTests.cs`: scripted `HttpClient` responses.
 - `ZeroBounceTests/OfflineApiTests.cs`: offline suite. A fake `HttpMessageHandler` records every request and answers without the network.
@@ -52,6 +53,7 @@ Publish (`.github/workflows/publish.yml`) is `workflow_dispatch` with a tag. It 
 - **`SendEmailFinderFile` needs `first_name_column` or `full_name_column`** besides `domain_column`. The server does not complain until the job runs, so the SDK rejects it first.
 - **`ExportSFTPFile` sends `export_path`**, not the `export_bucket` that `ExportS3File` sends.
 - **`{"success": false}` on an HTTP 200 is a failure.** The API answers an unknown bulk file id that way. `HttpErrors.SuccessMeansFailure` is the check, applied in `ReadUsableBody`.
+- **A new public API method goes on the interface too**, with the same signature (parameter names included) and the same XML docs: `IZeroBounce` for `ZeroBounce`, `IZeroBounceWarmup` for `ZeroBounceWarmup`. Setup and configuration (`Instance`, `Initialize`, the base-URL setters, constructors) stay off the interfaces; a new setup method goes on the exclusion list in `ClientInterfaceTests`. Do not make the client methods `virtual` or seal the classes.
 - **`ZeroBounceWarmup` is a separate client for the Warmup API**, a different product with its own host and its own team-scoped key. It is not part of `ZeroBounce` and takes its own handler for tests.
 - **`RecordedRequest.RawUri` un-escapes for display.** It comes from `Uri.ToString()`, which turns `%20` back into a space. Assert on `EscapedUri` (`Uri.AbsoluteUri`) when a test is about percent-encoding.
 - **Column indexes.** `SendFileOptions` name, gender, and IP columns default to `0`, and `0` means the field is left out. The email column is required and is sent as given, including `0`. `ValidateS3FileOptions.EmailAddressColumn` and `ScoreS3FileOptions.EmailAddressColumn` are `int?`: when set, `0` is sent. Bulk finder, domain search, and list evaluator reject a column below `1`.
